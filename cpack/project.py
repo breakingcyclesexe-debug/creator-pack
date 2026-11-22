@@ -160,6 +160,22 @@ def create(name='My video'):
     return pj
 
 
+def is_empty(pid, pj=None):
+    """A video nobody has put anything into yet: no clips, no versions, no story."""
+    pj = pj or read_json(os.path.join(folder(pid), 'project.json'))
+    return bool(pj) and not pj.get('takes') and not pj.get('versions') and pj.get('stage', 'footage') == 'footage' \
+        and not os.path.exists(os.path.join(folder(pid), 'storyboard.json'))
+
+
+def new_or_empty():
+    """The page asks for a new video on every fresh browser open. Hand back the newest empty one if there is one, so
+    opening the page twice never leaves "My video (22 Nov) 2" behind; else make one."""
+    os.makedirs(projects_dir(), exist_ok=True)
+    for pid in sorted(os.listdir(projects_dir()), reverse=True):
+        if valid_id(pid) and is_empty(pid): return load(pid)
+    return create()
+
+
 TURNS = {0, 90, 180, 270}
 
 
@@ -235,6 +251,16 @@ def rename(pid, title):
     return update(pid, lambda pj: pj.update(title=t))
 
 
+def numbered(items):
+    """Videos with the same name in the list get "(2)", "(3)" by age, oldest first without a number, so the buyer
+    can tell them apart. items: dicts with id, title, created; titles are changed in place."""
+    seen = {}
+    for it in sorted(items, key=lambda x: (x.get('created') or 0, x['id'])):
+        k = (it.get('title') or '').strip().lower(); seen[k] = seen.get(k, 0) + 1
+        if seen[k] > 1: it['title'] = f"{it['title']} ({seen[k]})"
+    return items
+
+
 def listing():
     os.makedirs(projects_dir(), exist_ok=True)
     out = []
@@ -245,6 +271,8 @@ def listing():
                 sb = read_json(os.path.join(projects_dir(), pid, 'storyboard.json'), {}) or {}
                 out.append({'id': pid, 'name': pj.get('name'), 'stage': pj.get('stage'), 'created': pj.get('created'),
                             'title': title_of(pj, sb), 'story': str(sb.get('one_line', ''))[:240], 'empty': not pj.get('takes')})
+    named = [x for x in out if not x['empty']]   # empty videos never show in the list, so they never take a number
+    numbered(named)
     return out
 
 

@@ -79,6 +79,7 @@ def done(root, jid, reply='', ok=True):
     job = _read(src)
     job.update(status='done' if ok else 'failed', reply=str(reply)[:4000], finished=time.time())
     _write(os.path.join(d['done'], jid + '.json'), job); os.remove(src)
+    heartbeat(root)   # the session just answered: it is still there, so the page never flashes "isn't listening" before its next wait
     return job
 
 

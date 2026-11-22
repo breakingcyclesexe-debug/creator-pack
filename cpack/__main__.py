@@ -1,7 +1,10 @@
 """cpack: the pack's commands. The skill runs these; tinkerers can too.
 
-  cpack start [--no-open]          start the page (if it isn't running) and open it in the browser
+  cpack start [--no-open] [--port N]  start the page (if it isn't running) and open it in the browser
+  cpack stop                       stop the page (videos and jobs stay)
   cpack serve [--port N]           run the page's server in this terminal
+
+  CPACK_HOME (data folder, default ~/Movies/Creator Pack) and CPACK_PORT (default 8765) let a second copy run beside the first.
   cpack setup                      what's installed and what's missing (looks only)
   cpack jobs next [--wait S]       take the next job from the page (waits up to S seconds, max 540)
   cpack jobs done ID [--reply T] [--failed]
@@ -21,28 +24,97 @@ def _arg(a, flag, default=None):
     return a[a.index(flag) + 1] if flag in a and a.index(flag) + 1 < len(a) else default
 
 
-def running_url():
+PACK = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DEFAULT_PORT = 8765
+
+
+def port_wanted(a=()):
+    """--port N, else CPACK_PORT, else 8765. A test copy runs beside the real one with its own port and CPACK_HOME."""
+    try: return int(_arg(list(a), '--port', os.environ.get('CPACK_PORT') or DEFAULT_PORT))
+    except ValueError: sys.exit('The port must be a number, like 8765.')
+
+
+def running():
+    """The page this data home is using right now: (url, its /api/state), or (None, None)."""
     try:
         with open(os.path.join(prj.home(), 'server.url')) as f: url = f.read().strip()
-        with urllib.request.urlopen(url + 'api/state', timeout=2) as r:
-            if r.status == 200: return url
-    except Exception: return None
+        with urllib.request.urlopen(url + 'api/state', timeout=5) as r:
+            if r.status == 200: return url, json.load(r)
+    except Exception: pass
+    return None, None
 
 
-def start(open_browser=True):
-    url = running_url()
-    if not url:
+def running_url():
+    return running()[0]
+
+
+def other_copy(state):
+    """A note when the running page comes from a different copy of the pack (an older install, a test copy), or ''."""
+    pk = (state or {}).get('pack') or {}
+    if pk.get('root') and os.path.realpath(pk['root']) == os.path.realpath(PACK): return ''
+    mine = pack_version()
+    if not pk: return f'Note: the page that is open comes from an older copy of the Creator Pack Editor, not this one ({mine}). Run `cpack stop`, then /creator-pack again to use this one.'
+    if pk.get('version') == mine: return ''
+    return (f"Note: the page that is open is version {pk.get('version')}, not this copy ({mine}). "
+            'Run `cpack stop`, then /creator-pack again to use this one.')
+
+
+def pack_version():
+    return prj.read_json(os.path.join(PACK, '.claude-plugin', 'plugin.json'), {}).get('version', '')
+
+
+def log_tail(n=6):
+    try:
+        with open(os.path.join(prj.home(), 'server.log')) as f: return ''.join(f.readlines()[-n:]).strip()
+    except OSError: return ''
+
+
+def start(open_browser=True, port=None):
+    url, state = running()
+    if url:
+        note = other_copy(state)
+        if note: print(note)
+    else:
         os.makedirs(prj.home(), exist_ok=True)
+        try: os.remove(os.path.join(prj.home(), 'server.url'))   # a stale address from last time must not count as started
+        except OSError: pass
         log = open(os.path.join(prj.home(), 'server.log'), 'a')
-        subprocess.Popen([sys.executable, '-m', 'cpack', 'serve'], cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                         stdout=log, stderr=log, start_new_session=True)
-        for _ in range(50):
+        proc = subprocess.Popen([sys.executable, '-m', 'cpack', 'serve', '--port', str(port or port_wanted())], cwd=PACK,
+                                stdout=log, stderr=log, start_new_session=True)
+        for _ in range(100):
             time.sleep(0.2); url = running_url()
-            if url: break
-    if not url: sys.exit('The page did not start; see ' + os.path.join(prj.home(), 'server.log'))
+            if url or proc.poll() is not None: break
+        if not url:
+            why = log_tail()
+            sys.exit('The page did not start.' + (f' The last lines of its log:\n{why}' if why else '') +
+                     f"\nFull log: {os.path.join(prj.home(), 'server.log')}")
+        wanted = port or port_wanted()
+        if not url.rstrip('/').endswith(f':{wanted}'):
+            print(f'Port {wanted} is taken by another program, so the page uses {url} instead.')
     if open_browser:
         from .platform import get; get().open_url(url)
     print(url)
+
+
+def stop():
+    """Stops the page this data home is using (any copy of the pack). Jobs and videos stay."""
+    url, _ = running()
+    if not url: print('The page is not running.'); return
+    pid = prj.read_json(os.path.join(prj.home(), 'server.json'), {}).get('pid')
+    if not pid:
+        try:   # pages from before server.json: find whoever listens on that port
+            port = url.rstrip('/').rsplit(':', 1)[1]
+            out = subprocess.run(['lsof', '-t', f'-iTCP:{port}', '-sTCP:LISTEN'], capture_output=True, text=True).stdout.split()
+            pid = int(out[0]) if out else None
+        except Exception: pid = None
+    if not pid: sys.exit(f'Could not find the page at {url} to stop it. Quit it from Activity Monitor (Python).')
+    import signal
+    try: os.kill(int(pid), signal.SIGTERM)
+    except ProcessLookupError: pass
+    for _ in range(25):
+        time.sleep(0.2)
+        if not running_url(): break
+    print('stopped')
 
 
 GUIDE = {
@@ -62,9 +134,10 @@ GUIDE = {
 def main(a):
     if not a or a[0] in ('-h', '--help'): print(__doc__); return
     cmd = a[0]
-    if cmd == 'start': start('--no-open' not in a)
+    if cmd == 'start': start('--no-open' not in a, port_wanted(a))
+    elif cmd == 'stop': stop()
     elif cmd == 'serve':
-        from .server import serve; serve(int(_arg(a, '--port', 8765)), '--open' in a)
+        from .server import serve; serve(port_wanted(a), '--open' in a)
     elif cmd == 'setup':
         d = setup_check.detect()
         for it in d['items']: print(f"{'ok     ' if it['found'] else 'MISSING'} {it['name']}{' (optional)' if it.get('optional') else ''}: {it['why']}")

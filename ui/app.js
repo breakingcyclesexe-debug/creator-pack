@@ -787,7 +787,7 @@
     const v = shownV(), secs = sectionsOf(v), box = $('#pick'); let html = '';
     if(picked && picked.kind==='spot' && spots[picked.k]){
       const i = spots[picked.k], sent = sentFix.has(`${v.v}:${i.at}:${i.kind}`);
-      html = `<div class="what"><b>${esc(i.say)}</b><span>${sent ? 'Sent to the chat. Claude Code fixes it and makes a new version.' : `Worth a look. It plays from ${mmss(Math.max(0,i.at-2))}.`}</span></div><button type="button" class="btn navy sm" data-fix-spot="${picked.k}" ${sent?'disabled':''}>${sent?'Sent':'Fix it'}</button>`;
+      html = `<div class="what"><b>${esc(i.say)}</b><span>${sent ? 'Sent to the chat. Claude Code fixes it and makes a new version.' : (i.kind==='missing' ? `Fix it moves the cut so the whole word is heard, as a new version. Plays from ${mmss(Math.max(0,i.at-2))}.` : `Worth a look. It plays from ${mmss(Math.max(0,i.at-2))}.`)}</span></div><button type="button" class="btn navy sm" data-fix-spot="${picked.k}" ${sent?'disabled':''}>${sent?'Sent':'Fix it'}</button>`;
     } else if(picked && picked.kind==='sec' && secs[picked.i]){
       const s = secs[picked.i];
       html = `<div class="what"><b>${esc(secTitle(s, picked.i, secs.length))}</b><span>${mmss(s.start)} to ${mmss(s.end)}. Say what to change and Claude Code does it.</span></div><button type="button" class="btn navy sm" data-fix-sec="${picked.i}">Fix it</button>`;

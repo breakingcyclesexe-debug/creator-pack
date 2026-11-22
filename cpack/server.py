@@ -16,6 +16,8 @@ UI = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '
 FONTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'fonts')
 VIDEO_EXT = {'.mov', '.mp4', '.m4v', '.mkv', '.avi', '.mts', '.webm'}
 MAX_JSON = 1 << 20
+PACK_ROOT = os.path.dirname(UI)
+PACK_INFO = {'root': PACK_ROOT, 'version': (prj.read_json(os.path.join(PACK_ROOT, '.claude-plugin', 'plugin.json'), {}) or {}).get('version', '')}
 WAITLIST_URL = os.environ.get('CPACK_WAITLIST_URL', 'https://breakingcycles.life')   # Story Studio "I want this": point at the real page later
 
 
@@ -34,14 +36,27 @@ def background(pid, fn, *a):
     threading.Thread(target=go, daemon=True).start()
 
 
-def sections(pid, v, labels):
-    """The finished video as its story sections, for the read-only timeline: consecutive clips of one beat are one section."""
+def sections(pid, v, labels, beats=None):
+    """The finished video as its story sections, for the read-only timeline: consecutive clips of one beat are one
+    section. When the cut joined two parts said back to back into one clip, the clip is split where the next part
+    starts (beats: the storyboard's parts with take and start), so the timeline shows every part the story has."""
     rep = prj.read_json(os.path.join(prj.folder(pid), f'v{int(v)}', 'cut.json'), {}) or {}
     out, t = [], 0.0
+    def add(beat, a, b):
+        if out and out[-1]['beat'] == beat: out[-1]['end'] = round(b, 2)
+        else: out.append({'beat': beat, 'label': labels.get(beat, ''), 'start': round(a, 2), 'end': round(b, 2)})
     for c in rep.get('clips', []):
-        d = float(c.get('dur') or 0)
-        if out and out[-1]['beat'] == c.get('beat'): out[-1]['end'] = round(t + d, 2)
-        else: out.append({'beat': c.get('beat'), 'label': labels.get(c.get('beat'), ''), 'start': round(t, 2), 'end': round(t + d, 2)})
+        d = float(c.get('dur') or 0); src_in, src_out = c.get('in'), c.get('out')
+        cuts = []
+        if beats and src_in is not None and src_out is not None and src_out > src_in:
+            for b in beats:
+                st = b.get('start')
+                if b.get('id') != c.get('beat') and b.get('take') == c.get('take') and st is not None and src_in + 0.3 < st < src_out - 0.3:
+                    cuts.append((t + (st - src_in) * d / (src_out - src_in), b['id']))
+        beat, a = c.get('beat'), t
+        for at, nxt in sorted(cuts):
+            add(beat, a, at); beat, a = nxt, at
+        add(beat, a, t + d)
         t += d
     return out
 
@@ -52,11 +67,11 @@ def project_view(pid):
     pj['storyboard'] = pipeline.load_story(pid)
     labels = {b['id']: b.get('label', '') for b in (pj['storyboard'] or {}).get('beats', [])}
     for v in pj['versions']:
-        v['sections'] = sections(pid, v['v'], labels)
+        v['sections'] = sections(pid, v['v'], labels, [b for b in (pj['storyboard'] or {}).get('beats', []) if b.get('keep', True)])
         if isinstance(v.get('qa'), dict) and 'items' in v['qa']: v['qa'] = dict(v['qa'], items=qa.surface(v['qa']['items']))
         v['captions_stale'] = pipeline.stale_captions(pj, v)
     pj['fixes'] = pj.pop('caption_fixes', None) or {}
-    pj['title'] = prj.title_of(pj, pj['storyboard'])
+    pj['title'] = next((x['title'] for x in prj.listing() if x['id'] == pid), None) or prj.title_of(pj, pj['storyboard'])   # with its "(2)" if the name is taken
     pj['chat'] = prj.chat(pid)
     pj['jobs'] = [{k: j.get(k) for k in ('id', 'type', 'status', 'text', 'reply', 'created', 'taken')} for j in jobs.listing(prj.jobs_dir(), pid)][-20:]
     pj['folder_name'] = os.path.basename(pj['folder']) if pj.get('folder') else ''
@@ -163,7 +178,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._file(f) if inside(UI, f) else self._err(404, 'not found')
             if path == '/api/state':
                 return self._json({'setup': setup_check.detect(), 'connected': jobs.connected(prj.jobs_dir()),
-                                   'projects': prj.listing(), 'home': prj.home(), 'exports': prj.exports_dir(), 'prefs': prj.prefs()})
+                                   'projects': prj.listing(), 'home': prj.home(), 'exports': prj.exports_dir(), 'prefs': prj.prefs(),
+                                   'pack': PACK_INFO})
             m = re.fullmatch(r'/api/project/([a-z0-9-]+)/captions/(\d+)', path)
             if m: return self._json(pipeline.captions_view(m.group(1), int(m.group(2))))
             m = re.fullmatch(r'/api/project/([a-z0-9-]+)', path)
@@ -193,7 +209,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/interest':
                 return self._json(interest(self._body()))
             if path == '/api/project/new':
-                return self._json(prj.create())
+                return self._json(prj.new_or_empty())
             if path == '/api/prefs':
                 return self._json(prj.save_prefs(self._body()))
             m = re.fullmatch(r'/api/project/([a-z0-9-]+)/(\w+)', path)
@@ -302,6 +318,7 @@ def serve(port=8765, open_browser=False):
     url = f'http://127.0.0.1:{httpd.server_address[1]}/'
     os.makedirs(prj.home(), exist_ok=True)
     with open(os.path.join(prj.home(), 'server.url'), 'w') as f: f.write(url)
+    prj.write_json(os.path.join(prj.home(), 'server.json'), dict(PACK_INFO, url=url, pid=os.getpid()))   # which copy, for cpack stop
     print(url, flush=True)
     if open_browser: P.open_url(url)
     httpd.serve_forever()

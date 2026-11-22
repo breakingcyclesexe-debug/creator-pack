@@ -11,6 +11,7 @@ The page does the mechanical work itself (setup check, transcribing, cutting, ca
 
 ## 1. Open the page
 Run `CPACK start`. It starts the local page (127.0.0.1 only) if it isn't running and opens it in the browser. Tell the user in one line: the page is open at the printed address, add footage there, and press Go; you will pick up the story when it is ready.
+If it prints a line starting with "Note:" (the open page is from another copy of the pack), tell the user in plain words and ask before switching; if they say yes, run `CPACK stop` and then `CPACK start`. If it prints "Port ... is taken", just give the user the new address. If it says the page did not start, tell them what its log says in plain words.
 
 ## 2. Work the jobs, in a loop
 Run `CPACK jobs next --wait 540` in the foreground (never in the background, never with `&`; it returns by itself within 9 minutes). It prints one job as JSON with a `what_to_do` line, or `{"none": true}`.

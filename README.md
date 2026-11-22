@@ -46,6 +46,8 @@ Everything runs on your Mac and your footage never leaves it. The cutting uses n
 
 3. When it says it's installed, type `/reload-plugins`, then `/creator-pack`. A page opens in your browser. Drop your video.
 
+**Claude Code asks before it runs the pack.** Pick "Yes, and don't ask again" so it can keep working while you edit.
+
 **First time only.** The page checks your Mac and installs what's missing with one click. About 10 minutes, most of it the speech model download.
 
 **You need** a Mac with an Apple chip (M1 or newer) and Claude Pro or Max.

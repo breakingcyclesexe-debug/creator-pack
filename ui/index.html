@@ -471,7 +471,8 @@ body.asking #fin-primary{background:transparent;border-color:var(--navy);color:v
 .chat form{display:flex;gap:8px;align-items:flex-end;padding:12px 16px 16px;border-top:1px solid var(--line)}
 .chat textarea{min-height:64px;max-height:160px;resize:none}
 
-#toast{position:fixed;left:calc((100vw - var(--chat))/2);bottom:104px;transform:translate(-50%,16px);z-index:80;max-width:480px;padding:12px 20px;border-radius:10px;background:var(--ink);color:#fff;font-size:14px;opacity:0;pointer-events:none;transition:.2s}
+/* toasts sit at the top, over the step names, never over the video or its captions */
+#toast{position:fixed;left:calc((100vw - var(--chat))/2);top:calc(var(--bar) + 10px);transform:translate(-50%,-16px);z-index:80;max-width:480px;padding:12px 20px;border-radius:10px;background:var(--ink);color:#fff;font-size:14px;opacity:0;pointer-events:none;transition:.2s}
 #toast.show{opacity:1;transform:translate(-50%,0)}
 body.no-chat #toast{left:50%}
 
@@ -742,7 +743,7 @@ body.no-chat #toast{left:50%}
               <label class="choice"><input type="radio" name="c-cpos" value="right"><span>Right</span></label>
               <label class="choice"><input type="radio" name="c-cpos" value="moves"><span>Moves around</span></label></div></div>
             <label class="tog"><input type="checkbox" id="c-motion" checked><span class="sw"></span><span>Motion<small>Each caption pops in as you say it.</small></span></label>
-            <label class="tog"><input type="checkbox" id="c-popon"><span class="sw"></span><span>Colour the word being said<small>Off keeps every word the same, easier to read.</small></span></label>
+            <label class="tog"><input type="checkbox" id="c-popon"><span class="sw"></span><span>Highlight each word as you say it<small>Like karaoke. Off keeps all words one colour.</small></span></label>
             <div class="field" id="c-hi-f" hidden><label for="c-hi">Colour</label><input type="color" id="c-hi" value="#e3991d"></div>
             <div class="field" id="wpl-field"><label for="c-wpl">Most words on one line</label><input type="number" id="c-wpl" min="2" max="8" value="4"></div>
           </div>

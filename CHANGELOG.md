@@ -2,6 +2,16 @@
 
 Creator Pack Editor, beta. Newest first. Each version here is a tag and a release on the beta repo.
 
+## 0.1.2-beta (22 Nov 2026)
+
+- Opening the page no longer makes an empty video each time.
+- Videos with the same name show (2), (3) so you can tell them apart.
+- Messages pop up at the top, never over your video or captions.
+- If the pack is already open, it says so and uses another address.
+- The timeline on Finish shows every part of your story.
+- No more "Claude isn't listening" flash right after a new version.
+- Plainer words for the word highlight and the Fix it button.
+
 ## 0.1.1-beta (22 Nov 2026)
 
 - Four steps: Footage, Story, Look, Finish. Tidy up now sits inside Look.
