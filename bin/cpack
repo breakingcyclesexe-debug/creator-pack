@@ -1,0 +1,21 @@
+#!/bin/bash
+# Runs the pack's commands with the pack's own Python helpers (made on first run, inside the pack).
+set -e
+PACK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PY="$PACK/.venv/bin/python"
+if [ ! -x "$PY" ]; then
+  # Homebrew's Python first: on a new Mac /usr/bin/python3 is only a stand-in that asks to install Apple's developer tools.
+  BASE=""
+  for c in /opt/homebrew/bin/python3 /usr/local/bin/python3 "$(command -v python3 || true)"; do
+    if [ -n "$c" ] && [ -x "$c" ] && "$c" -c 'import venv, ensurepip' >/dev/null 2>&1; then BASE="$c"; break; fi
+  done
+  if [ -z "$BASE" ]; then
+    echo "Python 3 is missing. Install Homebrew (the line is on https://brew.sh), then run: brew install python" >&2; exit 1
+  fi
+  if ! "$BASE" -m venv "$PACK/.venv" >&2 || ! "$PY" -m pip install -q --disable-pip-version-check -r "$PACK/requirements.txt" >&2; then
+    rm -rf "$PACK/.venv"   # half made: start clean next time instead of running without the helpers
+    echo "Setting up the pack's Python helpers failed (is the internet on?). Run the same thing again to retry." >&2; exit 1
+  fi
+fi
+
+PYTHONPATH="$PACK${PYTHONPATH:+:$PYTHONPATH}" exec "$PY" -m cpack "$@"

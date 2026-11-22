@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Creator Pack Editor (beta)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Colours and type: the v5 site (_v5-site.css). Spacing on an 8 px grid. Made for a Mac desktop or laptop. */
+:root{
+  --bg:#fafaf7; --surface:#f0efe9; --surface2:#e8e7e0;
+  --navy:#1c3d5a; --navy2:#2d5d8a; --amber:#e8a13d; --line:#d4d3cc;
+  --ink:#14283a; --soft:#4c5a66; --muted:#636b72;
+  --ok:#2f6b4f; --err:#9a3324; --err-bg:#f7e6e1; --tint:#fbf1e0;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  --bar:56px; --chat:384px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+body{padding-top:var(--bar);font-size:15px;line-height:1.5}
+[hidden]{display:none !important}
+[tabindex="-1"]:focus{outline:none}
+:focus-visible{outline:3px solid var(--navy);outline-offset:2px}
+button,input,select,textarea{font:inherit;color:inherit}
+p,h1,h2,ul,ol,fieldset,legend{margin:0;padding:0}
+fieldset{border:0;min-width:0}
+ul,ol{list-style:none}
+.sr{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* top bar */
+.bar{position:fixed;top:0;left:0;right:0;z-index:50;height:var(--bar);display:flex;align-items:center;gap:16px;padding:0 24px;background:var(--navy);color:#fafaf7}
+.bar :focus-visible{outline-color:var(--amber)}
+.logo{font-family:var(--mono);font-weight:500;font-size:12px;letter-spacing:.2em;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.logo i{width:10px;height:10px;border-radius:50%;background:var(--amber)}
+.spacer{flex:1}
+.barlab{font-size:13px;opacity:.8;margin-right:-8px}
+.barlab[hidden]{display:none}
+.bar select{height:32px;max-width:300px;padding:0 8px;border-radius:6px;border:1px solid rgba(255,255,255,.28);background:transparent;color:#fafaf7;font-size:13px}
+.bar select option{color:var(--ink)}
+.barbtn{height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(255,255,255,.28);background:transparent;color:#fafaf7;font-size:13px;cursor:pointer;white-space:nowrap}
+.barbtn:hover{background:var(--navy2)}
+.nav{display:flex;height:var(--bar)}
+.nav button{display:flex;align-items:center;gap:8px;height:var(--bar);padding:0 16px;background:none;border:0;cursor:pointer;color:#e9ece8;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+.nav button .ico{width:18px;height:18px;color:var(--amber)}
+.nav button:hover{background:var(--navy2)}
+.nav button.locked{color:rgba(233,236,232,.5)}
+.nav button.locked .ico{color:rgba(233,236,232,.5)}
+.studio-card{position:fixed;top:calc(var(--bar) + 8px);right:24px;z-index:60;width:340px;padding:20px;border-radius:12px;background:#fff;border:1px solid var(--line);box-shadow:0 12px 32px rgba(15,30,50,.18)}
+.studio-card p{margin:0;color:var(--soft);font-size:14.5px}
+.studio-card[hidden]{display:none}
+.nav button[aria-current="page"]{box-shadow:inset 0 -3px 0 var(--amber)}
+.ccpill{display:flex;align-items:center;gap:8px;font-size:13px;color:#dfe6ea;white-space:nowrap}
+.ccpill i,.conn i{width:8px;height:8px;border-radius:50%;background:#7fd1a3;flex:none}
+.ccpill.off i,.conn.off i{background:var(--amber)}
+
+/* type */
+.eyebrow,.lab{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:8px}
+h1{font-weight:600;font-size:32px;line-height:1.15;letter-spacing:-.02em}
+h2{font-weight:600;font-size:17px;line-height:1.3}
+.sub{color:var(--soft);margin-top:8px;max-width:600px;font-size:16px}
+.hint{color:var(--soft);font-size:13.5px}
+.head{padding:32px 0 24px}
+
+/* cards */
+.card{margin-top:16px;padding:24px;background:var(--surface);border:1px solid var(--line);border-radius:12px;min-width:0}
+.head+.card{margin-top:0}
+.card>h2{margin-bottom:16px}
+.block{margin-top:24px}
+.block>h2,.block>legend{margin-bottom:12px;font-weight:600;font-size:17px}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.card-h{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:16px}
+
+/* buttons: ghost by default, one amber primary per screen */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:0 16px;border-radius:8px;background:transparent;border:1px solid var(--navy);color:var(--navy);font-weight:600;font-size:14px;cursor:pointer;white-space:nowrap;text-decoration:none}
+.btn:hover{background:var(--navy);color:#fafaf7}
+.btn.primary{background:var(--amber);border-color:var(--amber);color:var(--ink);min-height:48px;padding:0 32px;font-size:16px}
+.btn.primary:hover{background:var(--navy);border-color:var(--navy);color:#fafaf7}
+.btn.navy{background:var(--navy);color:#fafaf7}
+.btn.navy:hover{background:var(--navy2)}
+.btn.sm{min-height:32px;padding:0 12px;font-size:13px}
+.btn:disabled{opacity:.45;cursor:not-allowed;pointer-events:none}
+.linkbtn{background:none;border:0;padding:0;color:var(--navy2);font-weight:600;font-size:13.5px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;border:1px solid transparent;background:none;color:var(--navy);cursor:pointer}
+.ib:hover{background:var(--surface2);border-color:var(--line)}
+.ib:disabled{opacity:.25;cursor:default;pointer-events:none}
+.ib .ico{width:18px;height:18px}
+.soon{display:inline-block;padding:2px 8px;border-radius:99px;background:var(--surface2);color:var(--muted);font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+
+/* inputs */
+input[type=text],textarea,select{width:100%;min-height:40px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:#fff}
+textarea{min-height:120px;resize:vertical;line-height:1.5}
+input[type=color]{width:48px;height:40px;padding:2px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer}
+input[type=number]{width:80px;min-height:40px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:#fff}
+
+/* choices: picture tiles and segments */
+.choice{position:relative;display:block;cursor:pointer}
+.choice input{position:absolute;opacity:0;pointer-events:none}
+.tiles{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+.tiles.two{grid-template-columns:1fr 1fr}
+.tiles.four{grid-template-columns:repeat(4,1fr);gap:8px}
+.tiles.four .tile{padding:12px}
+.tile{display:flex;flex-direction:column;gap:4px;height:100%;padding:16px;border:1.5px solid var(--line);border-radius:10px;background:var(--bg);font-size:13.5px;color:var(--soft)}
+.tile b{color:var(--ink);font-size:15px}
+.tile .pic{display:flex;align-items:center;justify-content:center;height:88px;margin-bottom:8px;color:var(--navy)}
+.tile.side{flex-direction:row;align-items:center;gap:16px}
+.tile.side .pic{height:auto;margin:0}
+.choice:hover .tile{border-color:var(--navy2)}
+.choice input:checked+.tile{border-color:var(--navy);background:#fff;box-shadow:inset 0 0 0 1.5px var(--navy)}
+.choice input:checked+.tile b::after{content:"";display:inline-block;width:12px;height:7px;margin-left:8px;border-left:2.5px solid var(--ok);border-bottom:2.5px solid var(--ok);transform:rotate(-45deg) translateY(-3px)}
+.choice input:focus-visible+.tile,.choice input:focus-visible+span{outline:3px solid var(--navy);outline-offset:2px}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:3px;gap:3px}
+.seg .choice span{display:block;padding:7px 16px;border-radius:6px;font-size:14px;font-weight:500;color:var(--soft)}
+.seg .choice:hover span{color:var(--ink)}
+.seg .choice input:checked+span{background:var(--navy);color:#fafaf7}
+.shape{display:block;border:2px solid currentColor;border-radius:4px;background:rgba(28,61,90,.08)}
+.fitpic{position:relative;display:block;width:63px;height:112px;border-radius:8px;overflow:hidden;border:2px solid var(--navy);background:#23395b center/cover no-repeat;flex:none}
+.fitpic.pad::before{content:"";position:absolute;inset:-8px;background:inherit;filter:blur(6px) brightness(.8)}
+.fitpic.wide{width:112px;height:63px}
+.fitpic.wide.pad i{left:50%;right:auto;top:0;bottom:0;transform:translateX(-50%);aspect-ratio:9/16;height:100%}
+.fitpic.pad i{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);aspect-ratio:16/9;background:#23395b center/cover no-repeat}
+.tog{position:relative;display:flex;align-items:center;gap:12px;padding:10px 0;cursor:pointer;font-size:15px}
+.tog input{position:absolute;opacity:0}
+.tog .sw{position:relative;width:40px;height:24px;border-radius:99px;background:#b9b8b0;flex:none;transition:background .15s}
+.tog .sw::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .15s}
+.tog input:checked+.sw{background:var(--navy)}
+.tog input:checked+.sw::after{transform:translateX(16px)}
+.tog input:focus-visible+.sw{outline:3px solid var(--navy);outline-offset:2px}
+.tog small{display:block;color:var(--soft);font-size:13px}
+details.more{margin-top:16px}
+details.more>summary{display:inline-flex;align-items:center;gap:8px;cursor:pointer;color:var(--navy2);font-weight:600;font-size:14px;list-style:none}
+details.more>summary::-webkit-details-marker{display:none}
+details.more>summary::before{content:"";width:7px;height:7px;border-right:2px solid;border-bottom:2px solid;transform:rotate(-45deg);transition:transform .15s}
+details.more[open]>summary::before{transform:rotate(45deg)}
+details.more>summary span{font-weight:400;color:var(--soft)}
+details.more>.more-b{padding-top:16px}
+details.card.more>summary{font-size:15px}
+.note{display:flex;gap:8px;align-items:flex-start;margin-top:12px;padding:10px 12px;border-radius:8px;background:var(--tint);font-size:13.5px;color:var(--ink)}
+.note .ico{width:18px;height:18px;color:#a86a10;margin-top:1px}
+.err{margin-bottom:16px;padding:16px;border-radius:10px;background:var(--err-bg);border:1px solid #e3b9ae;color:var(--err)}
+.err b{display:block;margin-bottom:4px}
+.folderrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;padding:12px 16px;border-radius:10px;background:var(--bg);border:1px solid var(--line)}
+.folderrow p{margin:0;flex:1;min-width:240px;font-size:13.5px;color:var(--soft)}
+.folderrow p b{display:block;color:var(--ink);font-size:14.5px}
+.folderrow p span{display:block;font-family:var(--mono);font-size:12.5px;color:var(--navy2);margin:2px 0 4px;word-break:break-all}
+.folderrow[hidden]{display:none}
+.banner.ask{flex-wrap:wrap}
+.banner.ask p{flex:1;min-width:260px;margin:0}
+.banner.ask .row{gap:8px}
+.vpick{display:inline-flex;align-items:center;gap:8px;margin-top:12px;font-size:13.5px;color:var(--soft)}
+.vpick select{min-height:36px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:13.5px}
+.beat .grip{cursor:grab;color:var(--soft);display:flex;align-items:center;padding:0 4px;letter-spacing:-2px;font-weight:700;user-select:none}
+.banner{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:16px;padding:12px 16px;border-radius:10px;background:var(--tint);border:1px solid #ecd3a4}
+
+/* layout */
+.single{max-width:760px;margin:0 auto;padding:0 32px}
+.app{display:grid;grid-template-columns:minmax(0,1fr) var(--chat);min-height:calc(100vh - var(--bar))}
+.main{min-width:0;padding:0 40px}
+.main-in{max-width:880px;margin:0 auto;display:flex;flex-direction:column;min-height:calc(100vh - var(--bar))}
+.panel{flex:1;display:flex;flex-direction:column}
+.panel>.foot{margin-top:auto}
+.foot{position:sticky;bottom:0;z-index:5;display:flex;align-items:center;gap:16px;min-height:80px;padding:16px 0;background:var(--bg);border-top:1px solid var(--line)}
+.foot-gap{height:32px;flex:none}
+.foot-msg{flex:1;min-width:0;font-size:14px;color:var(--soft)}
+.foot-msg b{color:var(--ink)}
+.foot-msg>b{display:block;font-size:15px}
+.hu{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--soft)}
+.hu b{color:var(--ink);white-space:nowrap}
+.gauge{display:inline-flex;gap:3px}
+.gauge i{width:6px;height:14px;border-radius:2px;background:var(--line)}
+.gauge i.on{background:var(--amber)}
+
+/* stepper */
+.stepper{position:sticky;top:var(--bar);z-index:10;background:var(--bg);border-bottom:1px solid var(--line);margin:0 -40px;padding:0 40px}
+.stepper ol{display:flex;max-width:880px;margin:0 auto;height:56px;align-items:center}
+.stepper li{display:flex;align-items:center;flex:1}
+.stepper li:last-child{flex:none}
+.stepper li:not(:last-child)::after{content:"";flex:1;height:2px;background:var(--line);margin:0 12px}
+.stepper li.done:not(:last-child)::after{background:var(--navy)}
+.stepper button{display:flex;align-items:center;gap:8px;background:none;border:0;padding:8px 0;cursor:pointer;font-weight:600;font-size:14px;color:var(--muted)}
+.stepper button:disabled{cursor:default;opacity:.6}
+.stepper .n{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;border:2px solid var(--line);font-size:13px;background:var(--bg)}
+.stepper .n .ico{display:none;width:16px;height:16px;stroke-width:2.6}
+.stepper .done button{color:var(--navy)}
+.stepper .done .n{background:var(--navy);border-color:var(--navy);color:#fff}
+.stepper .done .n span{display:none}.stepper .done .n .ico{display:block}
+.stepper button[aria-current]{color:var(--ink)}
+.stepper button[aria-current] .n{border-color:var(--amber);background:var(--amber);color:var(--ink)}
+.stepper button[aria-current] .n span{display:block}.stepper button[aria-current] .n .ico{display:none}
+
+/* footage */
+.drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:100%;min-height:136px;border:2px dashed #b3b2aa;border-radius:12px;background:var(--bg);cursor:pointer;color:var(--soft);font-size:14px}
+.drop b{font-size:17px;color:var(--ink)}
+.drop .ico{width:32px;height:32px;color:var(--navy);margin-bottom:4px}
+.drop:hover,.drop.over{border-color:var(--navy);background:#fff}
+.files{display:grid;gap:8px;margin-top:16px}
+.files:empty{display:none}
+.file{display:flex;align-items:center;gap:12px;padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.file .thumb{width:72px;height:72px;display:flex;align-items:center;justify-content:center;border-radius:6px;background:#23395b;flex:none;overflow:hidden}
+.file .thumb img{max-width:72px;max-height:72px;display:block}
+.file .turns{display:flex;gap:4px;flex:none}
+.file .turns .btn{min-height:32px;padding:0 10px;font-size:13px}
+.file .fn{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file .fd{color:var(--soft);font-size:13.5px}
+.file>div{flex:1;min-width:0}
+.turnbox{display:flex;gap:16px;align-items:center;margin-top:16px;padding:16px;border-radius:10px;background:var(--bg);border:1px solid var(--line)}
+.turnbox img{max-width:160px;max-height:160px;border-radius:6px;flex:none}
+
+/* progress */
+.prog{padding:24px;border-radius:12px;background:#fff;border:1px solid var(--line)}
+.prog-h{display:flex;align-items:flex-start;gap:16px}
+.prog-h>div:nth-child(2){flex:1;min-width:0}
+.prog-h h2{font-size:20px}
+.prog-h p{margin-top:4px;color:var(--soft)}
+.prog-t{text-align:right;white-space:nowrap;font-size:13.5px;color:var(--soft)}
+.prog-t b{display:block;font-family:var(--mono);font-weight:500;font-size:22px;color:var(--ink);line-height:1.2}
+.spin{width:28px;height:28px;border-radius:50%;border:3px solid var(--surface2);border-top-color:var(--amber);animation:spin .9s linear infinite;flex:none;margin-top:2px}
+.spin.sm{width:16px;height:16px;border-width:2px;margin:2px 0 0}
+.spin.wait{animation:none;border-color:var(--amber);border-style:dotted}
+@keyframes spin{to{transform:rotate(360deg)}}
+.pbar{position:relative;height:6px;margin:20px 0;border-radius:99px;background:var(--surface2);overflow:hidden}
+.pbar i{position:absolute;inset:0 auto 0 0;border-radius:99px;background:var(--amber);transition:width .6s;overflow:hidden}
+.pbar i::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.7),transparent);animation:sheen 1.6s linear infinite}
+@keyframes sheen{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.psteps{display:grid;gap:10px}
+.psteps li{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:15px}
+.psteps .d{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:2px solid var(--line);flex:none;font-size:11px;font-weight:600}
+.psteps .d .ico{width:13px;height:13px;stroke-width:3;display:none}
+.psteps li.done{color:var(--ink)}
+.psteps li.done .d{background:var(--ok);border-color:var(--ok);color:#fff}
+.psteps li.done .d span{display:none}.psteps li.done .d .ico{display:block}
+.psteps li.now{color:var(--ink);font-weight:600}
+.psteps li.now .d{border-color:var(--amber);background:var(--amber);color:var(--ink)}
+.psteps li small{margin-left:auto;font-weight:400;color:var(--muted);font-size:13px}
+.ccoff{margin-top:20px;padding:16px;border-radius:10px;background:var(--tint);border:1px solid #ecd3a4;font-size:14.5px}
+.ccoff b{display:block;font-size:16px;margin-bottom:4px}
+.cmd{display:flex;align-items:center;gap:8px;margin-top:12px}
+code{font-family:var(--mono);font-size:14px;padding:6px 10px;border-radius:6px;background:#fff;border:1px solid var(--line)}
+
+/* story */
+.oneline{font-size:20px;line-height:1.35;font-weight:600;letter-spacing:-.01em}
+.chip{display:inline-flex;align-items:center;padding:4px 12px;border-radius:99px;background:var(--navy);color:#fafaf7;font-size:13px;font-weight:500}
+.notes{display:grid;gap:6px;margin-top:16px}
+.notes:empty{display:none}
+.notes li{display:flex;gap:8px;font-size:13.5px;color:var(--soft);cursor:pointer}
+.notes li span{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.notes li.open span{display:block}
+.notes .ico{width:16px;height:16px;color:#a86a10;margin-top:2px}
+.beats{display:grid;gap:8px}
+.beat{display:grid;grid-template-columns:14px 28px minmax(0,1fr) auto;gap:12px;align-items:start;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.beat.over{border-color:var(--navy);box-shadow:0 -3px 0 var(--amber)}
+.beat.dragging{opacity:.4}
+.beat .num{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--navy);color:#fff;font-size:13px;font-weight:600;cursor:grab}
+.beat-h{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.beat-h b{font-size:15px}
+.beat-h span{font-size:12.5px;color:var(--muted)}
+.beat-line{margin-top:2px;color:var(--soft);font-size:14.5px;max-width:60ch}
+.beat-line.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.beat-acts{display:flex;align-items:center;gap:2px}
+.beat-acts .tb{height:32px;padding:0 10px;border-radius:8px;border:1px solid transparent;background:none;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+.beat-acts .tb:hover{background:var(--surface2);border-color:var(--line)}
+.beat.off{background:transparent;border-style:dashed}
+.beat.off .num{background:var(--line);color:var(--muted)}
+.beat.off .beat-b{opacity:.5}
+.beat.off .beat-line{text-decoration:line-through}
+.beat-play{grid-column:3/5}
+.beat-play video{display:block;max-width:100%;max-height:280px;border-radius:8px;background:#000}
+.leftout{display:grid;gap:8px;font-size:13.5px;color:var(--soft)}
+.leftout li{padding-left:12px;border-left:2px solid var(--line)}
+
+/* look */
+.look{display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:24px;align-items:start}
+.look .card:first-child{margin-top:0}
+.pvwrap{position:sticky;top:calc(var(--bar) + 72px);text-align:center}
+.pv{position:relative;margin:0 auto;max-width:100%;border-radius:12px;overflow:hidden;background:#23395b center/cover no-repeat;border:1px solid var(--line)}
+.pv-cap{position:absolute;left:8%;right:8%;text-align:center;font-weight:800;line-height:1.2;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 2px #000}
+.cap-pic{position:relative;width:48px;height:80px;border-radius:6px;background:#23395b;display:flex;align-items:flex-end;justify-content:center;padding-bottom:10px;color:#fff;font-size:7px;font-weight:800;line-height:1.25;text-align:center}
+.cap-pic em{font-style:normal;color:var(--amber)}
+.field{display:flex;align-items:center;gap:12px;margin-top:16px}
+.field>label,.field>span:first-child{font-size:14.5px;min-width:200px}
+.soonrow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px solid var(--line);color:var(--muted)}
+.card-h+.soonrow,.soonrow:first-child{border-top:0;padding-top:0}
+.soonrow:last-child{padding-bottom:0}
+.soonrow b{font-weight:500}
+.soonrow small{display:block;font-size:13px}
+
+/* cut */
+.recap{display:grid;gap:8px}
+.recap li{display:flex;gap:10px;align-items:flex-start}
+.recap .ico{width:18px;height:18px;color:var(--ok);margin-top:2px;stroke-width:2.4}
+
+/* finish: one player, one timeline under it, one small panel. Export sits beside it. */
+#p5 .head{padding:24px 0 16px}
+.finish{display:grid;grid-template-columns:minmax(0,1fr) 272px;gap:24px;align-items:start}
+.stage{padding:16px 20px 12px;border-radius:14px;background:#0f1f2e;color:#dfe6ea}
+.stage :focus-visible{outline-color:var(--amber)}
+.stage-v{display:flex;justify-content:center}
+.stage video{display:block;border-radius:8px;background:#000;width:auto;height:calc(100vh - 486px);min-height:280px;max-width:100%;cursor:pointer}
+.ctl{display:flex;align-items:center;gap:12px;margin-top:14px;min-height:32px}
+.pp{flex:none;display:grid;place-items:center;width:32px;height:32px;padding:0;border:0;border-radius:50%;background:var(--amber);color:var(--ink);cursor:pointer}
+.pp:hover{background:#fff}
+.pp .ico{width:14px;height:14px}
+.tm{font-family:var(--mono);font-size:12px;color:#b8c7d3;white-space:nowrap}
+.now{flex:1;min-width:0;text-align:right;font-size:13px;color:#b8c7d3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.now b{color:#fff;font-weight:600}
+.now .spin{display:inline-block;vertical-align:-3px;margin:0 6px 0 0;border-color:rgba(255,255,255,.25);border-top-color:var(--amber)}
+.track{position:relative;display:flex;gap:3px;margin-top:8px;padding-top:8px;touch-action:none;user-select:none}
+.seg{position:relative;flex:1 1 0;min-width:5px;height:28px;padding:0;border:0;background:none;cursor:pointer}
+.seg::before{content:"";position:absolute;left:0;right:0;top:0;height:8px;border-radius:3px;background:rgba(255,255,255,.2);transition:background .12s}
+.seg .fill{position:absolute;left:0;top:0;width:0;height:8px;border-radius:3px;background:var(--amber);pointer-events:none}
+.seg .num{position:absolute;left:0;right:0;top:13px;font-family:var(--mono);font-size:10px;line-height:14px;color:#8194a5;text-align:center;pointer-events:none}
+.seg:hover::before{background:rgba(255,255,255,.36)}
+.seg:hover .num,.seg.on .num{color:#fff}
+.seg.sel::before{background:rgba(255,255,255,.45)}
+.seg.sel .num{color:var(--amber);font-weight:500}
+.spot{position:absolute;top:5px;z-index:2;width:14px;height:14px;margin-left:-7px;padding:0;border:2px solid #0f1f2e;border-radius:50%;background:#fff;box-shadow:0 0 0 1.5px var(--amber);cursor:pointer}
+.spot:hover,.spot.sel{background:var(--amber)}
+.knob{position:absolute;top:5px;z-index:3;width:4px;height:14px;margin-left:-2px;border-radius:2px;background:#fff;box-shadow:0 0 0 1px rgba(15,31,46,.6);pointer-events:none}
+.said{margin-top:4px;padding-top:10px;border-top:1px solid rgba(255,255,255,.1);min-height:64px;text-align:center;font-size:15px;line-height:1.7;color:#b8c7d3}
+.said .w{padding:1px 3px;border:0;border-radius:4px;background:none;color:inherit;font:inherit;cursor:default}
+.said.can .w{cursor:pointer}
+.said.can .w:hover{background:rgba(255,255,255,.14);color:#fff}
+.said .w.on{color:var(--amber)}
+.said .w.fx{text-decoration:underline dotted rgba(232,161,61,.8);text-underline-offset:4px}
+.slot{min-height:66px;margin-top:12px}
+.pick{display:flex;align-items:center;gap:16px;padding:12px 12px 12px 16px;border-radius:10px;background:#fff;border:1px solid var(--line)}
+.pick.look{background:var(--tint);border-color:#ecd3a4}
+.pick .what{flex:1;min-width:0}
+.pick .what b{display:block;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pick .what span{display:block;font-size:13.5px;color:var(--soft)}
+.pick .ib{color:var(--muted)}
+.fin-tip{padding:12px 0 0 2px}
+.fin-side h2{font-size:17px}
+.fin-side .hint{margin-top:4px}
+.quiet{display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:13.5px;line-height:1.45;color:var(--soft)}
+.quiet .ico{width:15px;height:15px;margin-top:2px;stroke-width:2.6;color:var(--ok)}
+.quiet i{flex:none;width:9px;height:9px;margin:5px 3px 0;border-radius:50%;background:#fff;box-shadow:0 0 0 1.5px var(--amber)}
+.quiet+.quiet{margin-top:6px}
+.acts{display:grid;gap:8px;margin-top:20px}
+.acts .btn{width:100%}
+body.asking #fin-primary{background:transparent;border-color:var(--navy);color:var(--navy)}
+#p5-prog .prog{padding:16px}
+#p5-prog .prog-h h2{font-size:17px}
+#p5-prog .psteps{gap:6px}
+#p5-prog .psteps li{font-size:14px}
+#p5-prog .pbar{margin:12px 0}
+.saved{margin-top:12px;padding:12px 16px;border-radius:10px;background:#e7f1ea;border:1px solid #bcd7c6;font-size:13.5px;word-break:break-word}
+.later{margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
+.later li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0;font-size:14px;color:var(--muted)}
+.wordfix{position:fixed;z-index:70;width:348px;padding:16px;border-radius:12px;background:#fff;border:1px solid var(--line);box-shadow:0 12px 32px rgba(15,30,50,.22)}
+.wordfix .row{flex-wrap:nowrap;margin:0 0 8px}
+.wordfix input{min-width:0}
+.wordfix .lab{margin-bottom:8px}
+/* words I use */
+.wchips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+.wchips:empty{display:none}
+.wchips li{display:inline-flex;align-items:center;gap:4px;padding:3px 4px 3px 12px;border-radius:99px;background:#fff;border:1px solid var(--line);font-size:14px}
+.wchips button{display:grid;place-items:center;width:22px;height:22px;padding:0;border:0;border-radius:50%;background:none;color:var(--muted);cursor:pointer}
+.wchips button:hover{background:var(--surface2);color:var(--ink)}
+.wchips .ico{width:12px;height:12px;stroke-width:2.4}
+.wform{display:flex;gap:8px;max-width:420px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;padding:12px 16px 0;border-top:1px solid var(--line)}
+.chips button{padding:4px 10px;border-radius:99px;border:1px solid var(--line);background:var(--bg);font-size:12.5px;color:var(--navy);cursor:pointer;text-align:left}
+.chips button:hover{border-color:var(--navy);background:#fff}
+.chips+form{border-top:0}
+.msg.offer{align-self:stretch;max-width:100%;background:transparent;border:1px dashed var(--line);color:var(--soft);font-size:13.5px;white-space:normal}
+.msg.offer .btn{margin-top:8px;width:100%;justify-content:space-between;border-style:dashed;border-color:var(--line);color:var(--muted);opacity:1;font-weight:500}
+.vchips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.vchips .lab{margin:0 6px 0 0}
+.fin-side .vchips button{min-width:30px;padding:3px 0;text-align:center}
+.vchips:empty{display:none}
+.vchips button{padding:4px 12px;border-radius:99px;border:1px solid var(--line);background:var(--bg);font-size:13px;font-weight:600;cursor:pointer;color:var(--soft)}
+.vchips button[aria-pressed="true"]{background:var(--navy);border-color:var(--navy);color:#fff}
+
+/* chat: a column beside the work, never over it */
+.chat{position:sticky;top:var(--bar);height:calc(100vh - var(--bar));display:flex;flex-direction:column;border-left:1px solid var(--line);background:var(--surface)}
+.chat.flash{animation:flash 1s}
+@keyframes flash{30%{box-shadow:inset 5px 0 0 var(--amber)}}
+.chat-h{padding:16px 20px;border-bottom:1px solid var(--line)}
+.conn{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:13px;color:var(--soft)}
+.chat .ccoff{margin:12px 16px 0;font-size:13.5px}
+.msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.msg{max-width:92%;padding:10px 12px;border-radius:12px;font-size:14.5px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
+.msg .who{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+.msg.cl{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:4px}
+.msg.me{align-self:flex-end;background:var(--navy);color:#fafaf7;border-bottom-right-radius:4px}
+.msg.me .who{color:#b8c7d3}
+.msg.me.draft{background:#fff;color:var(--ink);border:1.5px dashed var(--navy)}
+.msg.me.draft .who{color:var(--muted)}
+.msg.work{display:flex;gap:10px;align-items:flex-start;white-space:normal}
+.msg.work b{display:block}
+.msg.work small{display:block;color:var(--soft);font-size:13px}
+.msg.ev{align-self:stretch;max-width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#e7f1ea;border:1px solid #bcd7c6;font-weight:600;white-space:normal}
+.confirm{align-self:stretch;padding:16px;border-radius:12px;background:var(--tint);border:1.5px solid var(--amber)}
+.confirm>b{display:block;font-size:15px}
+.confirm .hu{margin:6px 0 12px;flex-wrap:wrap}
+.confirm .row .btn.primary{min-height:40px;flex:1}
+.chat form{display:flex;gap:8px;align-items:flex-end;padding:12px 16px 16px;border-top:1px solid var(--line)}
+.chat textarea{min-height:64px;max-height:160px;resize:none}
+
+#toast{position:fixed;left:calc((100vw - var(--chat))/2);bottom:104px;transform:translate(-50%,16px);z-index:80;max-width:480px;padding:12px 20px;border-radius:10px;background:var(--ink);color:#fff;font-size:14px;opacity:0;pointer-events:none;transition:.2s}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+body.no-chat #toast{left:50%}
+
+/* setup */
+.tool{display:flex;flex-wrap:wrap;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--line)}
+.tool:first-child{border-top:0;padding-top:0}
+.tool:last-child{padding-bottom:0}
+.tool>div:not(.fix){flex:1;min-width:0}
+.tool b{display:block}
+.tool small{color:var(--soft);font-size:13.5px}
+.tool .mark{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;border:2px solid var(--line);flex:none}
+.tool .mark .ico{width:16px;height:16px;stroke-width:2.8;display:none}
+.tool.ok .mark{background:var(--ok);border-color:var(--ok);color:#fff}
+.tool.ok .mark .ico{display:block}
+.tool .st{font-size:14px;font-weight:600;color:var(--ok);white-space:nowrap;display:flex;align-items:center;gap:8px}
+.tool .st.miss{color:var(--soft);font-weight:500}
+.tool .st input{width:18px;height:18px;accent-color:var(--navy)}
+.tool .fix{flex-basis:100%;margin:0 0 0 44px;padding:12px 16px;border-radius:10px;background:var(--tint);font-size:14px}
+
+/* small windows: the chat drops under the work instead of beside it */
+@media (max-width:1040px){
+  .app{grid-template-columns:1fr}
+  .chat{position:static;height:480px;border-left:0;border-top:1px solid var(--line)}
+  .main{padding:0 24px}.stepper{margin:0 -24px;padding:0 24px}
+  .look,.finish{grid-template-columns:1fr}
+  .stage video{height:auto;max-height:60vh}
+  #toast{left:50%}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
+</style>
+</head>
+<body class="no-chat">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></symbol>
+  <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-.5-.5-2.5z"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z" fill="currentColor"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M7 5h3.500v14H7zM13.500 5H17v14h-3.500z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.500c.7.7 1 1.500 1 2.500h6c0-1 .3-1.800 1-2.500A6 6 0 0 0 12 3z"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"/></symbol>
+</svg>
+
+<header class="bar">
+  <div class="logo"><i></i>CREATOR PACK · EDITOR <span class="soon">Beta</span></div>
+  <label class="barlab" for="proj-pick" id="proj-lab" hidden>Your videos</label>
+  <select id="proj-pick" hidden></select>
+  <button type="button" class="barbtn" id="new-video" hidden>New video</button>
+  <div class="spacer"></div>
+  <div class="ccpill off" id="cc-pill"><i></i><span>Claude isn't listening</span></div>
+  <nav class="nav" aria-label="Screens">
+    <button type="button" id="tab-editor" data-go="editor"><svg class="ico"><use href="#i-film"/></svg>Editor</button>
+    <button type="button" id="tab-studio" class="locked" aria-haspopup="dialog" aria-expanded="false" title="Story Studio, coming next"><svg class="ico"><use href="#i-lock"/></svg>Story Studio</button>
+    <button type="button" id="tab-setup" data-go="setup" aria-current="page"><svg class="ico"><use href="#i-wrench"/></svg>Setup</button>
+  </nav>
+</header>
+
+<!-- ================= SETUP ================= -->
+<section id="screen-setup" class="single" aria-labelledby="setup-h">
+  <div class="head">
+    <p class="eyebrow">One time setup</p>
+    <h1 id="setup-h" tabindex="-1">Get your Mac ready</h1>
+    <p class="sub" id="setup-sub"></p>
+  </div>
+  <div class="card">
+    <ul class="tools" id="tools"></ul>
+  </div>
+  <div id="setup-prog" class="block" hidden></div>
+  <div class="card" id="licence-card" hidden>
+    <div class="card-h"><h2>Your licence</h2><span class="hint" id="licence-st"></span></div>
+    <p class="hint" id="licence-why"></p>
+    <form class="wform" id="licence-form"><label class="sr" for="licence-in">Licence key</label><input type="text" id="licence-in" maxlength="200" placeholder="Paste your licence key" autocomplete="off" spellcheck="false"><button type="submit" class="btn">Check</button></form>
+  </div>
+  <div class="card" id="words-card">
+    <div class="card-h"><h2>Words I use</h2><span class="hint">Names, brands and places you say a lot</span></div>
+    <p class="hint">Your Mac reads this list before it listens to a video, so a name like "Claude" is not written down as "clock". Saved on your Mac, for every video.</p>
+    <ul class="wchips" id="words-list"></ul>
+    <form class="wform" id="words-form"><label class="sr" for="words-in">A word you use</label><input type="text" id="words-in" maxlength="40" placeholder="Add a word, like Claude" autocomplete="off" spellcheck="false"><button type="submit" class="btn">Add</button></form>
+  </div>
+  <div class="card">
+    <div class="card-h"><h2>Coming next</h2><span class="hint">Not in this version yet. Nothing to install.</span></div>
+    <div class="soonrow"><div><b>Fine-tune in DaVinci Resolve</b><small>Open your cut as a timeline and trim it by hand.</small></div><span class="soon">Coming next</span></div>
+    <div class="soonrow"><div><b>Fine-tune in the Instagram Edits app</b><small>Add songs, stickers and effects on your phone.</small></div><span class="soon">Coming next</span></div>
+    <div class="soonrow"><div><b>Animations</b><small>Moving titles and graphics, made with Remotion or HyperFrames.</small></div><span class="soon">Coming next</span></div>
+    <div class="soonrow"><div><b>Titles, fonts and your own style</b><small>Your colours and your look, saved once.</small></div><span class="soon">Coming next</span></div>
+    <div class="soonrow"><div><b>Copy a trend, and short clips from a long video</b><small>Two more kinds of video.</small></div><span class="soon">Coming next</span></div>
+    <div class="soonrow"><div><b>Story Studio</b><small>Ideas, story options and a script before you film. Sold on its own.</small></div><span class="soon">Coming next</span></div>
+  </div>
+  <div class="foot-gap"></div>
+  <div class="foot">
+    <div class="foot-msg" id="setup-msg"></div>
+    <button type="button" class="btn" id="recheck">Check again</button>
+    <button type="button" class="btn primary" id="setup-primary"></button>
+  </div>
+</section>
+
+<!-- ================= EDITOR ================= -->
+<div id="screen-editor" class="app" hidden>
+<main class="main"><div class="main-in">
+  <nav class="stepper" aria-label="Steps"><ol id="stepper"></ol></nav>
+  <div class="banner" id="setup-banner" hidden><p><b>Setup isn't finished.</b> Some steps won't work until it is.</p><button type="button" class="btn sm" data-go="setup">Finish setup</button></div>
+
+  <!-- 1 FOOTAGE -->
+  <div class="panel" id="p1">
+    <div class="head"><h1 tabindex="-1">Add your video clips</h1><p class="sub">Drop in everything you filmed, the bad takes too. Nothing leaves your Mac.</p></div>
+    <div class="card">
+      <button type="button" class="drop" id="drop"><svg class="ico"><use href="#i-upload"/></svg><b>Drop your clips here</b><span>or click to choose them</span></button>
+      <ul class="files" id="takes" aria-label="Clips added"></ul>
+      <div class="banner ask" id="clip-ask" hidden></div>
+      <div class="folderrow" id="folder-row" hidden><p><b>Your video's folder</b><span id="folder-name"></span>Put clips into its Footage folder, and anything you want to copy into References.</p>
+        <div class="row"><button type="button" class="btn sm" id="open-foot">Open folder</button><button type="button" class="btn sm" id="scan-now">I added files</button></div></div>
+      <p class="hint" id="turn-hint" hidden style="margin-top:8px">Does a clip look sideways or upside down? Turn that clip until it looks right.</p>
+      <p class="note" id="mix-tip" hidden><svg class="ico"><use href="#i-bulb"/></svg><span>For the best result, film everything the same way: upright for Instagram, sideways for YouTube.</span></p>
+      <details class="more"><summary>Can't drop it? <span>Type where the file is</span></summary>
+        <div class="more-b row"><label class="sr" for="path-in">Where the file is on your Mac</label><input type="text" id="path-in" placeholder="/Users/you/Movies/clip.mov" autocomplete="off" spellcheck="false" style="flex:1"><button type="button" class="btn" id="path-add">Add</button></div>
+      </details>
+    </div>
+    <div class="card">
+      <h2>Where will you post it?</h2>
+      <div class="tiles" role="radiogroup" aria-label="Where will you post it?">
+        <label class="choice"><input type="radio" name="purpose" value="ig" checked><span class="tile"><span class="pic"><i class="shape" style="width:40px;height:72px"></i></span><b>Instagram</b>Upright, like a phone</span></label>
+        <label class="choice"><input type="radio" name="purpose" value="yt"><span class="tile"><span class="pic"><i class="shape" style="width:112px;height:63px"></i></span><b>YouTube</b>Wide, like a TV</span></label>
+        <label class="choice"><input type="radio" name="purpose" value="other"><span class="tile"><span class="pic"><svg class="ico" style="width:40px;height:40px"><use href="#i-film"/></svg></span><b>Somewhere else</b>Keeps the shape you filmed</span></label>
+      </div>
+      <fieldset class="block" id="fit-q" hidden>
+        <legend id="fit-legend">You filmed this sideways. Instagram is upright. How should it fit?</legend>
+        <div class="tiles two">
+          <label class="choice"><input type="radio" name="fit" value="pad" checked><span class="tile side"><span class="pic"><span class="fitpic pad"><i></i></span></span><span><b>Show it all</b><br><span id="fit-pad-say">Nothing is cut off. A soft blur fills the empty space above and below.</span></span></span></label>
+          <label class="choice"><input type="radio" name="fit" value="crop"><span class="tile side"><span class="pic"><span class="fitpic"></span></span><span><b>Zoom in</b><br><span id="fit-crop-say">Fills the screen and follows your face. The left and right edges get cut off.</span></span></span></label>
+        </div>
+      </fieldset>
+      <fieldset class="block">
+        <legend>How long should it be?</legend>
+        <div class="seg" id="len-seg"></div>
+        <p class="note" id="reach-tip"><svg class="ico"><use href="#i-bulb"/></svg><span>Stay under 3 minutes. Instagram only shows reels of 3 minutes or less to new people.</span></p>
+      </fieldset>
+    </div>
+    <div class="card">
+      <h2>How did you film it?</h2>
+      <div class="tiles two" role="radiogroup" aria-label="How did you film it?">
+        <label class="choice"><input type="radio" name="filmed" value="talk" checked><span class="tile"><b>I just talked</b>We find the story in what you said.</span></label>
+        <label class="choice"><input type="radio" name="filmed" value="script"><span class="tile"><b>I read from a script</b>We follow your script, line by line.</span></label>
+      </div>
+      <div style="margin-top:8px" id="talk-box">
+        <label class="tog"><input type="checkbox" id="keep-order"><span class="sw"></span><span>Keep everything in the order I said it<small>Off means we can move parts around to tell it better.</small></span></label>
+      </div>
+      <div class="block" id="script-box" hidden>
+        <label class="sr" for="script-text">Your script</label>
+        <textarea id="script-text" placeholder="Paste your script here, one sentence per line"></textarea>
+      </div>
+    </div>
+    <details class="card more" id="more">
+      <summary>More choices <span>shape, file size, language</span></summary>
+      <div class="more-b">
+        <fieldset>
+          <legend class="lab">Shape of the video</legend>
+          <div class="tiles" role="radiogroup" aria-label="Shape of the video">
+            <label class="choice"><input type="radio" name="format" value="9:16" checked><span class="tile"><span class="pic"><i class="shape" style="width:36px;height:64px"></i></span><b>Upright</b>Reels, Shorts, TikTok</span></label>
+            <label class="choice"><input type="radio" name="format" value="4:5"><span class="tile"><span class="pic"><i class="shape" style="width:48px;height:60px"></i></span><b>Tall</b>Instagram feed post</span></label>
+            <label class="choice"><input type="radio" name="format" value="1:1"><span class="tile"><span class="pic"><i class="shape" style="width:56px;height:56px"></i></span><b>Square</b>Works anywhere</span></label>
+            <label class="choice"><input type="radio" name="format" value="16:9"><span class="tile"><span class="pic"><i class="shape" style="width:96px;height:54px"></i></span><b>Wide</b>YouTube, TV, laptop</span></label>
+            <label class="choice"><input type="radio" name="format" value="source"><span class="tile"><span class="pic"><svg class="ico" style="width:36px;height:36px"><use href="#i-film"/></svg></span><b>Same as filmed</b>No change</span></label>
+          </div>
+        </fieldset>
+        <div style="margin-top:16px">
+          <label class="tog"><input type="checkbox" id="small-file"><span class="sw"></span><span>Make a small file, under 25 MB<small>Easy to send in a message. Slightly lower picture quality.</small></span></label>
+        </div>
+        <div class="field"><label for="lang">Language you speak in it</label>
+          <select id="lang" style="max-width:240px">
+            <option value="auto" selected>Work it out for me</option>
+            <option value="en">English</option><option value="es">Español</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="yue">Cantonese</option><option value="zh">Mandarin</option>
+          </select></div>
+        <div class="field" id="zh-ask" hidden><span>Chinese characters in your captions</span><div class="seg" role="radiogroup" aria-label="Chinese characters in your captions">
+          <label class="choice"><input type="radio" name="zh" value="trad"><span>Traditional (Taiwan, Hong Kong)</span></label>
+          <label class="choice"><input type="radio" name="zh" value="simp"><span>Simplified (mainland China)</span></label></div></div>
+        <p class="hint" id="yue-note" style="margin-top:8px" hidden>Cantonese captions are always in Traditional characters.</p>
+        <div class="field"><span>Words I use</span><span class="hint" id="words-sum" style="min-width:0"></span><button type="button" class="linkbtn" id="words-edit">Edit the list</button></div>
+      </div>
+    </details>
+    <div class="foot-gap"></div>
+    <div class="foot">
+      <div class="foot-msg" id="p1-msg"></div>
+      <button type="button" class="btn" id="rehear" hidden>Listen again</button>
+      <button type="button" class="btn primary" id="go1">Go</button>
+    </div>
+  </div>
+
+  <!-- 2 STORY -->
+  <div class="panel" id="p2" hidden>
+    <div class="head"><h1 tabindex="-1">Check your story</h1><p class="sub" id="p2-sub"></p>
+      <div class="vpick" id="sv-box" hidden><label for="sv-pick">Story</label><select id="sv-pick"></select></div></div>
+    <div class="banner ask" id="fit-note" hidden></div>
+    <div class="err" id="p2-err" role="alert" hidden></div>
+    <div id="p2-prog"></div>
+    <div id="sb" hidden>
+      <div class="card" style="margin-top:0">
+        <p class="lab">Your story in one line</p>
+        <p class="oneline" id="story-line"></p>
+        <div class="row" style="margin-top:16px;gap:16px"><span class="chip" id="shape-chip"></span><button type="button" class="linkbtn" id="shape-try" aria-expanded="false">Try another shape</button></div>
+        <div class="seg" id="shape-alts" role="radiogroup" aria-label="Story shape" style="margin-top:12px" hidden></div>
+        <ul class="notes" id="advice" aria-label="Advice"></ul>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>The parts, in order</h2><span class="hint" id="sb-count"></span></div>
+        <p class="hint" style="margin:-8px 0 12px">Drag parts to change the order, or use the arrows.</p>
+        <ol class="beats" id="board"></ol>
+        <details class="more" id="leftout-d"><summary id="sum-left"></summary><div class="more-b"><ul class="leftout" id="leftout"></ul></div></details>
+      </div>
+    </div>
+    <div class="foot-gap"></div>
+    <div class="foot">
+      <div class="foot-msg" id="p2-msg"></div>
+      <button type="button" class="btn primary" id="to-look">Looks good, next<svg class="ico"><use href="#i-next"/></svg></button>
+    </div>
+  </div>
+  <div id="player-home" hidden><div class="beat-play" id="beat-play"><video id="beat-player" controls playsinline preload="metadata"></video></div></div>
+
+  <!-- 3 LOOK -->
+  <div class="panel" id="p3" hidden>
+    <div class="head"><h1 tabindex="-1">Pick your captions</h1><p class="sub">The words on screen while you talk. They are always exactly what you said.</p></div>
+    <div class="look">
+      <div>
+        <div class="card">
+          <h2>How many words at a time?</h2>
+          <div class="tiles four" role="radiogroup" aria-label="How many words at a time?">
+            <label class="choice"><input type="radio" name="cap" value="word"><span class="tile"><span class="pic"><span class="cap-pic"><em>WORD</em></span></span><b>One word</b>Fast and punchy</span></label>
+            <label class="choice"><input type="radio" name="cap" value="three" checked><span class="tile"><span class="pic"><span class="cap-pic"><span>A FEW <em>WORDS</em></span></span></span><b>A few words</b>Easy to follow</span></label>
+            <label class="choice"><input type="radio" name="cap" value="lines"><span class="tile"><span class="pic"><span class="cap-pic"><span>FULL LINES<br>LIKE A <em>MOVIE</em></span></span></span><b>Full lines</b>Like movie subtitles</span></label>
+            <label class="choice"><input type="radio" name="cap" value="none"><span class="tile"><span class="pic"><span class="cap-pic"></span></span><b>No captions</b>Just the video</span></label>
+          </div>
+          <div id="cap-more">
+            <div class="field"><span>Size</span><div class="seg">
+              <label class="choice"><input type="radio" name="c-csize" value="s"><span>Small</span></label>
+              <label class="choice"><input type="radio" name="c-csize" value="m" checked><span>Medium</span></label>
+              <label class="choice"><input type="radio" name="c-csize" value="l"><span>Large</span></label></div></div>
+            <div class="field"><span>Where on the screen</span><div class="seg">
+              <label class="choice"><input type="radio" name="c-cpos" value="top"><span>Top</span></label>
+              <label class="choice"><input type="radio" name="c-cpos" value="middle"><span>Middle</span></label>
+              <label class="choice"><input type="radio" name="c-cpos" value="bottom" checked><span>Bottom</span></label></div></div>
+            <div class="field"><label for="c-hi">Colour of the word being said</label><input type="color" id="c-hi" value="#e8a13d"></div>
+            <div class="field" id="wpl-field"><label for="c-wpl">Most words on one line</label><input type="number" id="c-wpl" min="2" max="8" value="4"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="soonrow"><div><b>Fonts, titles and animations</b><small>Your own font, a title behind your head, moving graphics.</small></div><span class="soon">Coming next</span></div>
+        </div>
+      </div>
+      <div class="pvwrap"><p class="lab">How it will look</p><div class="pv" id="pv"><div class="pv-cap" id="pv-cap"></div></div></div>
+    </div>
+    <div class="foot-gap"></div>
+    <div class="foot">
+      <div class="foot-msg">Captions are free. Your Mac draws them.</div>
+      <button type="button" class="btn primary" data-step="4">Next<svg class="ico"><use href="#i-next"/></svg></button>
+    </div>
+  </div>
+
+  <!-- 4 CUT -->
+  <div class="panel" id="p4" hidden>
+    <div class="head"><h1 tabindex="-1" id="p4-h">Tidy up and make the video</h1><p class="sub" id="p4-sub">Choose what gets cleaned out. Then your Mac cuts it.</p></div>
+    <div class="err" id="p4-err" role="alert" hidden></div>
+    <div id="p4-prog"></div>
+    <div id="p4-form">
+      <div class="card" style="margin-top:0">
+        <h2>What should we take out?</h2>
+        <label class="tog"><input type="checkbox" id="q-filler" checked><span class="sw"></span><span>Ums and uhs</span></label>
+        <label class="tog"><input type="checkbox" id="q-pause" checked><span class="sw"></span><span>Long pauses</span></label>
+        <label class="tog"><input type="checkbox" id="q-repeat" checked><span class="sw"></span><span>Repeats we kept<small>You said it on purpose.</small></span></label>
+        <label class="tog"><input type="checkbox" id="q-best" checked><span class="sw"></span><span>Retakes we cut<small>We kept your best try.</small></span></label>
+        <fieldset class="block">
+          <legend>How much pause between sentences?</legend>
+          <div class="seg">
+            <label class="choice"><input type="radio" name="breath" value="tight"><span>Tight, fast</span></label>
+            <label class="choice"><input type="radio" name="breath" value="normal" checked><span>Normal</span></label>
+            <label class="choice"><input type="radio" name="breath" value="relaxed"><span>Relaxed, room to breathe</span></label>
+          </div>
+        </fieldset>
+      </div>
+      <div class="card">
+        <h2>What you are about to get</h2>
+        <ul class="recap" id="recap"></ul>
+      </div>
+    </div>
+    <div class="foot-gap"></div>
+    <div class="foot">
+      <div class="foot-msg" id="p4-msg"></div>
+      <button type="button" class="btn primary" id="cut-it">Make my video</button>
+    </div>
+  </div>
+
+  <!-- 5 FINISH -->
+  <div class="panel" id="p5" hidden>
+    <div class="head"><h1 tabindex="-1">Your video</h1><p class="sub">Watch it through. Export it when it feels right, or say what to change in the chat.</p></div>
+    <div class="finish">
+      <div>
+        <div class="stage" id="stage">
+          <div class="stage-v"><video id="cut-player" playsinline preload="metadata"></video></div>
+          <div class="ctl">
+            <button type="button" class="pp" id="pp" aria-label="Play"><svg class="ico" aria-hidden="true"><use href="#i-play"/></svg></button>
+            <span class="tm" id="tm">0:00 / 0:00</span>
+            <span class="now" id="tl-now" aria-live="off"></span>
+          </div>
+          <div class="track" id="track" role="group" aria-label="Your video, section by section"></div>
+          <p class="said" id="said"></p>
+        </div>
+        <div class="slot">
+          <div class="pick" id="pick" hidden></div>
+          <p class="hint fin-tip" id="fin-tip">Click the bar to play a section. Click a word under the video to fix its spelling.</p>
+        </div>
+      </div>
+      <aside class="fin-side" aria-label="This version">
+        <div id="p5-prog"></div>
+        <div class="vchips" id="vchips" aria-label="Versions"></div>
+        <h2 id="vtag"></h2>
+        <p class="hint" id="stats"></p>
+        <p class="hint" id="vnote"></p>
+        <div id="qa-line"></div>
+        <div class="acts">
+          <button type="button" class="btn primary" id="fin-primary">Export</button>
+          <button type="button" class="btn" id="fin-again" hidden>Export it again</button>
+          <button type="button" class="btn" id="tweak"><svg class="ico"><use href="#i-chat"/></svg>Tweak with chat</button>
+        </div>
+        <div class="saved" id="final" hidden tabindex="-1"></div>
+        <p class="hint" id="p5-msg" style="margin-top:12px"></p>
+        <button type="button" class="linkbtn" id="open-exports" style="margin-top:4px">Open the folder</button>
+        <ul class="later" aria-label="Coming next">
+          <li>Fine-tune in DaVinci <span class="soon">Coming next</span></li>
+          <li>Fine-tune in Edits <span class="soon">Coming next</span></li>
+        </ul>
+      </aside>
+    </div>
+    <div class="foot-gap"></div>
+  </div>
+</div></main>
+
+<!-- CHAT: always beside the work -->
+<aside class="chat" id="chat" aria-label="Chat about this video">
+  <div class="chat-h"><h2>Chat about this video</h2><p class="conn off" id="conn"><i></i><span></span></p></div>
+  <div class="ccoff" id="chat-off" hidden><b>Claude isn't listening right now</b>In the Claude app, open Claude Code and send this message. It picks up from here by itself.
+    <div class="cmd"><code>/creator-pack</code><button type="button" class="btn sm" data-copy="/creator-pack">Copy</button></div></div>
+  <ol class="msgs" id="msgs" aria-live="polite"></ol>
+  <div class="chips" id="chips" aria-label="Examples you can use" hidden></div>
+  <form id="chat-form">
+    <label class="sr" for="chat-in">Your message</label>
+    <textarea id="chat-in" rows="2" placeholder="Say what to change, in plain words"></textarea>
+    <button type="submit" class="btn navy" id="chat-send">Send</button>
+  </form>
+</aside>
+</div>
+
+<div class="studio-card" id="studio-card" role="dialog" aria-labelledby="studio-h" hidden>
+  <div class="card-h"><h2 id="studio-h">Story Studio</h2><span class="soon">Coming next</span></div>
+  <p>Find the story before you film: turn a voice dump into a story and a script. Coming next.</p>
+  <div class="row" style="margin-top:16px;gap:8px"><button type="button" class="btn primary" id="studio-want">I want this</button><button type="button" class="btn" id="studio-close">Close</button></div>
+</div>
+<form class="wordfix" id="wordfix" hidden aria-label="Fix a caption word">
+  <label class="lab" for="wf-in" id="wf-lab">Fix this word</label>
+  <div class="row"><input type="text" id="wf-in" maxlength="40" autocomplete="off" spellcheck="false"><button type="submit" class="btn navy sm" id="wf-go">Change everywhere</button></div>
+  <p class="hint" id="wf-hint"></p>
+</form>
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="/ui/app.js"></script>
+</body>
+</html>
