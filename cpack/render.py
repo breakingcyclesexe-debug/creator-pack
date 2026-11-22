@@ -2,13 +2,13 @@
 
 1. plan():  kept beats in story order -> cut rules -> re-timed from a short hearing -> edges by sound
             (selfcheck.place) -> the self-listen check and its repairs (selfcheck.run) -> whole output frames.
-2. segments(): each clip encoded on its own (fast seek, turn, fit or face-following crop, one frame rate, 10 ms
-            sound fades on room tone), in parallel.
+2. segments(): each clip encoded on its own (fast seek, turn, fit or face-following crop, the punch-in zoom
+            that alternates at joins (zoom.py), one frame rate, 10 ms sound fades on room tone), in parallel.
 3. final(): clips joined, captions laid over, loudness to -14 LUFS, one encode at the size asked for.
 """
 import math, os, subprocess, time
 from concurrent.futures import ThreadPoolExecutor
-from . import cutrules, edges, media, shape, captions, retime, selfcheck, faces
+from . import cutrules, edges, media, shape, captions, retime, selfcheck, faces, zoom, titles
 from .platform import get as platform
 
 P = platform()
@@ -134,15 +134,19 @@ def recaption(rep, folder, words, fixes=None, script=None):
     W, H, total = rep['width'], rep['height'], rep['duration']
     fps_r = min(STANDARD, key=lambda x: abs(x[0] - (rep.get('fps') or 30)))[1]
     show = shown_words(words, fixes, script)
+    show, ttl = titles.prepare(rep.get('settings'), show)
     evs = captions.events(show, cap.get('style', 'three'), int(cap.get('per_line', 4)))
+    band = rep.get('bands')
     cap_list, cap_y = None, 0
     if evs:
         d = os.path.join(folder, 'captions.new')
         if os.path.isdir(d):
             import shutil; shutil.rmtree(d)
         cap_list, _, cap_y = captions.write_track(evs, W, H, cap, caption_font(show, script, captions.look_of(cap)), d, total,
-                                                  fps=rep.get('fps') or 30)
-    final(seg, cap_list, cap_y, W, H, fps_r, total, 0, os.path.join(folder, 'video.mp4'), kb=rep.get('kbps'))
+                                                  fps=rep.get('fps') or 30, band=band)
+    title = ttl and titles.write_track(ttl, W, H, titles.font_for(ttl['style'], ttl['words'], script), os.path.join(folder, 'title'), total,
+                                       rep.get('fps') or 30, band=band)
+    final(seg, cap_list, cap_y, W, H, fps_r, total, 0, os.path.join(folder, 'video.mp4'), kb=rep.get('kbps'), title=title)
     if evs:
         import shutil
         old = os.path.join(folder, 'captions')
@@ -161,24 +165,37 @@ def samples(frames, fps_r, sr=48000):
     return int(round(frames * den * sr / num))
 
 
-def segment_cmd(src, c, probe, turn, W, H, fit, out, fps_r, focus=None):
+def segment_cmd(src, c, probe, turn, W, H, fit, out, fps_r, focus=None, zm=(1.0, 1.0), backdrop=None):
     """One clip: exactly c['frames'] frames at the output rate, the first one at time 0, and exactly that long of
     sound, so every join is frame-exact and picture and sound never drift apart (CT-132, CT-133).
     The fps filter starts at 0: after a seek into a variable-rate iPhone take the first frame can sit 20-30 ms in,
     and without start_time=0 the clip's picture began one frame late (start_time 0.033) while its sound began at 0.
     The frame count is cut in the filter, not with -frames:v: ffmpeg 8 closes the whole file when the picture
-    reaches -frames:v, which cut the padded sound short (7 of a tester's 23 clips were 5-30 ms short of their picture)."""
+    reaches -frames:v, which cut the padded sound short (7 of a tester's 23 clips were 5-30 ms short of their picture).
+    backdrop: the image fit's still (a W x H picture, make_backdrop), a second input laid under the picture. Both
+    are put on the same frame clock before they meet, so the overlay is frame for frame and the timing is unchanged."""
     sw, sh = shape.turned_wh(probe['shown_w'], probe['shown_h'], turn)
     pre = (shape.turn_filter(turn) + ',') if shape.turn_filter(turn) else ''
-    fitf = faces.crop(sw, sh, W, H, focus) if (fit == 'crop' and abs(sw / sh - W / H) >= 0.01) else shape.fit_filter(sw, sh, W, H, fit)
+    if zm and (abs(zm[0] - 1) > 1e-4 or abs(zm[1] - 1) > 1e-4):   # a punch-in or the hook's push (zoom.py)
+        fitf = zoom.fit_filter(sw, sh, W, H, focus, zm[0], zm[1], c['dur'])
+    else:
+        fitf = faces.crop(sw, sh, W, H, focus) if (fit == 'crop' and abs(sw / sh - W / H) >= 0.01) else shape.fit_filter(sw, sh, W, H, fit)
     num, den = rate(fps_r)
     conv = media.sdr(probe)   # HDR / log to normal video first, so any look and the captions sit on normal colours (D34)
-    vf = f"[0:v]{pre}{fitf},{conv + ',' if conv else ''}fps=fps={fps_r}:start_time=0,trim=end_frame={c['frames']},setpts=N*{den}/{num}/TB,format=yuv420p[v]"
+    clock = f"fps=fps={fps_r}:start_time=0,trim=end_frame={c['frames']},setpts=N*{den}/{num}/TB"
+    image = fit == 'image' and backdrop and shape.picture_box(sw, sh, W, H, 'image') and not (zm and (abs(zm[0] - 1) > 1e-4 or abs(zm[1] - 1) > 1e-4))
+    if image:
+        fg, lay = shape.image_filter(sw, sh, W, H, f"{conv + ',' if conv else ''}{clock}")
+        vf = (f"[0:v]{pre}{fg}[fg];[1:v]format=yuv420p,{clock}[bg];[bg][fg]{lay},format=yuv420p[v]")
+    else:
+        if fit == 'image': fitf = shape.fit_filter(sw, sh, W, H, 'black')   # no backdrop made: black, never a broken clip
+        vf = f"[0:v]{pre}{fitf},{conv + ',' if conv else ''}{clock},format=yuv420p[v]"
     d, a = c['dur'], min(c.get('aud') or c['dur'], c['dur'])
     ns = samples(c['frames'], fps_r)
     af = (f"[0:a:0]{media.SYNC},atrim=0:{a:.5f},afade=t=in:st=0:d={FADE},afade=t=out:st={max(0, a - FADE):.4f}:d={FADE},"
           f"aformat=sample_rates=48000:channel_layouts=stereo,apad=whole_len={ns},atrim=end_sample={ns},asetpts=N/SR/TB[a]")
-    return [media.ff('ffmpeg'), '-v', 'error', '-y'] + P.HWACCEL + ['-ss', f"{c['ss']:.4f}", '-t', f'{d + 0.5:.4f}', '-i', src,
+    bg = ['-loop', '1', '-framerate', str(fps_r), '-t', f'{d + 0.5:.4f}', '-i', backdrop] if image else []
+    return [media.ff('ffmpeg'), '-v', 'error', '-y'] + P.HWACCEL + ['-ss', f"{c['ss']:.4f}", '-t', f'{d + 0.5:.4f}', '-i', src] + bg + [
             '-filter_complex', vf + ';' + af, '-map', '[v]', '-map', '[a]',
             '-c:v', P.VIDEO_ENCODER, '-b:v', '16M', '-c:a', 'pcm_s16le', out]
 
@@ -199,11 +216,76 @@ def segment_ok(path, frames, fps_r):
     return None
 
 
+DARKEN, VIGNETTE = 0.55, 0.45   # image fit backdrop: 45% darker, corners a further 45% down
+
+
+def backdrop_spot(pj, clips):
+    """(take, time) of the image fit's still: the buyer's pick (settings.backdrop) if it names a take, else the
+    middle of the first clip."""
+    b = pj['settings'].get('backdrop') or {}
+    names = {t['name'] for t in pj['takes']}
+    if b.get('take') in names and float(b.get('t', -1)) >= 0: return b['take'], float(b['t'])
+    c = clips[0]
+    return c['take'], c['ss'] + c['dur'] / 2
+
+
+def make_backdrop(pj, clips, W, H, folder):
+    """The image fit's backdrop: one still from the video, scaled to fill W x H, darkened, soft vignette. No blur.
+    Returns its path, or None when the frame can't be read (the clips then go on black)."""
+    from PIL import Image
+    take, t = backdrop_spot(pj, clips)
+    tk = next(x for x in pj['takes'] if x['name'] == take)
+    raw = os.path.join(folder, 'backdrop-frame.png'); out = os.path.join(folder, 'backdrop.png')
+    vf = ','.join(x for x in [shape.turn_filter(int(tk.get('turn', 0)) % 360), media.sdr(tk.get('probe'))] if x)
+    subprocess.run([media.ff('ffmpeg'), '-v', 'error', '-y', '-ss', f'{max(0.0, t):.3f}', '-i', tk['path'], '-frames:v', '1']
+                   + (['-vf', vf] if vf else []) + [raw], capture_output=True)
+    if not os.path.exists(raw): return None
+    im = Image.open(raw).convert('RGB')
+    k = max(W / im.width, H / im.height)
+    im = im.resize((max(W, round(im.width * k)), max(H, round(im.height * k))), Image.LANCZOS)
+    x, y = (im.width - W) // 2, (im.height - H) // 2
+    im = im.crop((x, y, x + W, y + H))
+    im = Image.eval(im, lambda v: int(v * DARKEN))
+    # vignette: full at the middle, falling smoothly to (1 - VIGNETTE) at the corners
+    small = Image.new('L', (64, 64))
+    px = small.load()
+    for j in range(64):
+        for i in range(64):
+            r = min(1.0, (((i + 0.5) / 32 - 1) ** 2 + ((j + 0.5) / 32 - 1) ** 2) ** 0.5 / 2 ** 0.5)
+            px[i, j] = int(255 * (1 - VIGNETTE * r * r))
+    mask = small.resize((W, H), Image.BICUBIC)
+    from PIL import ImageChops
+    im = ImageChops.multiply(im, Image.merge('RGB', [mask] * 3))
+    im.save(out)
+    return out
+
+
+def picture_boxes(pj, clips, W, H):
+    """Each clip's picture box in the frame (shape.picture_box), None where the picture fills it."""
+    probes = {t['name']: t['probe'] for t in pj['takes']}
+    turns = {t['name']: int(t.get('turn', 0)) % 360 for t in pj['takes']}
+    fit = pj['settings'].get('fit', 'pad')
+    return [shape.picture_box(*shape.turned_wh(probes[c['take']]['shown_w'], probes[c['take']]['shown_h'], turns.get(c['take'], 0)), W, H, fit)
+            for c in clips]
+
+
+def zoom_plan(pj, clips, W, H):
+    """(z_start, z_end) per clip from the project's zoom setting; 1.0 where the picture doesn't fill the frame."""
+    probes = {t['name']: t['probe'] for t in pj['takes']}
+    turns = {t['name']: int(t.get('turn', 0)) % 360 for t in pj['takes']}
+    fit = pj['settings'].get('fit', 'pad')
+    sizes = [shape.turned_wh(probes[c['take']]['shown_w'], probes[c['take']]['shown_h'], turns.get(c['take'], 0)) for c in clips]
+    zs = zoom.plan(clips, zoom.mode(pj['settings']), [zoom.headroom(sw, sh, W, H) for sw, sh in sizes])
+    return [z if zoom.fills(sw, sh, W, H, fit) else (1.0, 1.0) for z, (sw, sh) in zip(zs, sizes)]
+
+
 def segments(pj, clips, W, H, folder, progress=None, workers=3, fps_r='30/1'):
     os.makedirs(folder, exist_ok=True)
     probes = {t['name']: t['probe'] for t in pj['takes']}; paths = {t['name']: t['path'] for t in pj['takes']}
     turns = {t['name']: int(t.get('turn', 0)) % 360 for t in pj['takes']}   # each clip's own turn (CT-133)
     fit = pj['settings'].get('fit', 'pad')
+    zooms = zoom_plan(pj, clips, W, H)
+    bd = make_backdrop(pj, clips, W, H, folder) if fit == 'image' and any(picture_boxes(pj, clips, W, H)) else None
     outs = [os.path.join(folder, f'seg{n:04d}.mov') for n in range(len(clips))]
     done = [0]
 
@@ -211,12 +293,14 @@ def segments(pj, clips, W, H, folder, progress=None, workers=3, fps_r='30/1'):
         c, pr = clips[n], probes[clips[n]['take']]
         turn = turns.get(c['take'], 0)
         sw, sh = shape.turned_wh(pr['shown_w'], pr['shown_h'], turn)
-        focus = None
-        if fit == 'crop' and abs(sw / sh - W / H) >= 0.01:
+        focus, zm = None, zooms[n]
+        zoomed = abs(zm[0] - 1) > 1e-4 or abs(zm[1] - 1) > 1e-4
+        if zoomed: c['zoom'] = [zm[0], zm[1]] + (['upscaled'] if max(zm) > zoom.headroom(sw, sh, W, H) + 1e-6 else [])
+        if (fit == 'crop' and abs(sw / sh - W / H) >= 0.01) or zoomed:
             try: focus = faces.track(paths[c['take']], c['ss'], c['dur'], turn)
             except Exception: focus = None
             c['focus'] = focus and [[round(t, 2), round(x, 3), round(y, 3)] for t, x, y in focus]
-        r = subprocess.run(segment_cmd(paths[c['take']], c, pr, turn, W, H, fit, outs[n], fps_r, focus),
+        r = subprocess.run(segment_cmd(paths[c['take']], c, pr, turn, W, H, fit, outs[n], fps_r, focus, zm, **({'backdrop': bd} if bd else {})),
                            capture_output=True, text=True)
         if r.returncode != 0: raise RuntimeError(f'clip {n}: {r.stderr[-400:]}')
         bad = segment_ok(outs[n], c['frames'], fps_r)
@@ -243,7 +327,7 @@ def bitrate(total, max_mb, W, H):
     return int(max(300, min(top, budget(max_mb))))
 
 
-def final(seg_list, cap_list, cap_y, W, H, fps, total, max_mb, out, kb=None):
+def final(seg_list, cap_list, cap_y, W, H, fps, total, max_mb, out, kb=None, title=None):
     # One clock for the whole video (CT-133): frame n of the joined clips shows at n / fps and sample k plays at
     # k / 48000, counted, never read from the joined files' timestamps. The concat reader offsets each next clip by
     # the clip file's container length: 12 of a tester's 23 clips had their picture start one frame in, so each pushed the
@@ -257,6 +341,9 @@ def final(seg_list, cap_list, cap_y, W, H, fps, total, max_mb, out, kb=None):
         fc = f'[0:v]{clock}[m];[1:v]format=rgba[c];[m][c]overlay=0:{cap_y}:eof_action=pass:format=auto,format=yuv420p[v];'
     else:
         fc = f'[0:v]{clock},format=yuv420p[v];'
+    if title:   # the hook title (titles.py): (concat list, y), laid over the captions
+        cmd += ['-f', 'concat', '-safe', '0', '-i', title[0]]
+        fc = fc[:-4] + f'[u];[{2 if cap_list else 1}:v]format=rgba[t];[u][t]overlay=0:{title[1]}:eof_action=pass:format=auto,format=yuv420p[v];'
     fc += '[0:a]asetpts=N/SR/TB,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000,asetpts=N/SR/TB[a]'
     kb = kb or bitrate(total, max_mb, W, H)
     tmp = out + '.part.mp4'
@@ -278,6 +365,7 @@ def run(pj, sb, transcript, energy_of, folder, progress=lambda *a: None, hear_sp
     first = next(x['probe'] for x in pj['takes'] if x['name'] == p['clips'][0]['take'])
     sw, sh = shape.turned_wh(first['shown_w'], first['shown_h'], next(int(x.get('turn', 0)) for x in pj['takes'] if x['name'] == p['clips'][0]['take']))
     W, H = shape.target(sw, sh, pj['settings'].get('format', 'source'))
+    band = shape.bands(picture_boxes(pj, p['clips'], W, H), W, H)   # black / image: the empty space for the words
     t = time.time()
     lst = segments(pj, p['clips'], W, H, os.path.join(folder, 'segments'),
                    lambda d, n: progress('segments', d / n, f'Cutting clip {d} of {n}'), fps_r=p['fps_rational'])
@@ -287,28 +375,31 @@ def run(pj, sb, transcript, energy_of, folder, progress=lambda *a: None, hear_sp
     cap = pj['settings']['captions']
     fixes, script = pj.get('caption_fixes') or {}, pj.get('caption_script')
     show = shown_words(words, fixes, script)
+    show, ttl = titles.prepare(pj['settings'], show)
     evs = captions.events(show, cap.get('style', 'three'), int(cap.get('per_line', 4)))
     cap_list, cap_y, cap_h = (None, 0, 0)
     if evs:
         cap_list, cap_h, cap_y = captions.write_track(evs, W, H, cap, caption_font(show, script, captions.look_of(cap)),
-                                                      os.path.join(folder, 'captions'), total, fps=p['fps'] or 30)
+                                                      os.path.join(folder, 'captions'), total, fps=p['fps'] or 30, band=band)
+    title = ttl and titles.write_track(ttl, W, H, titles.font_for(ttl['style'], ttl['words'], script), os.path.join(folder, 'title'), total,
+                                       p['fps'] or 30, band=band)
     T['captions'] = round(time.time() - t, 1)
     t = time.time(); progress('final', 0, 'Joining, sound levels, captions')
     out = os.path.join(folder, 'video.mp4')
     max_mb = pj['settings']['export'].get('max_mb', 0)
-    kb = final(lst, cap_list, cap_y, W, H, p['fps_rational'], total, max_mb, out)
+    kb = final(lst, cap_list, cap_y, W, H, p['fps_rational'], total, max_mb, out, title=title)
     limit = (max_mb or 0) * 1e6
     for _ in range(3):   # the Mac's encoder can overshoot its target: a small file must really be small
         if not limit or os.path.getsize(out) <= limit: break
         kb = int(kb * limit / os.path.getsize(out) * 0.93)
-        final(lst, cap_list, cap_y, W, H, p['fps_rational'], total, max_mb, out, kb)
+        final(lst, cap_list, cap_y, W, H, p['fps_rational'], total, max_mb, out, kb, title=title)
     T['final'] = round(time.time() - t, 1)
-    clips = [{k: c.get(k) for k in ('take', 'in', 'out', 'ss', 'aud', 'dur', 'frames', 'text', 'beat', 'thr', 'focus')} |
+    clips = [{k: c.get(k) for k in ('take', 'in', 'out', 'ss', 'aud', 'dur', 'frames', 'text', 'beat', 'thr', 'focus', 'zoom')} |
              {'words': [w['n'] for w in c['words']], 'ws': round(c['ws'], 3), 'we': round(c['we'], 3),
               'edge_kind': [c['ein'].get('kind'), c['eout'].get('kind')], 'voice_from': c['ein'].get('quiet'), 'voice_to': c['eout'].get('quiet')}
              for c in p['clips']]
     return {'video': out, 'width': W, 'height': H, 'duration': round(total, 2), 'kbps': kb, 'clips': clips,
             'caption_events': len(evs), 'log': p['log'], 'retakes': p['retakes'], 'kept_repeats': p['kept_repeats'],
             'edges': p['edges'], 'retimed': p['retimed'], 'selfcheck': p['selfcheck'], 'fps': p['fps'], 'timings': T,
-            'caption_band': [cap_y, cap_y + cap_h] if cap_list else None,
-            'caption_words': words, 'caption_fixes': dict(fixes)}
+            'caption_band': [cap_y, cap_y + cap_h] if cap_list else None, 'title': ttl and {k: ttl[k] for k in ('style', 'text', 's', 'e')},
+            'caption_words': words, 'caption_fixes': dict(fixes), 'bands': list(band) if band else None}

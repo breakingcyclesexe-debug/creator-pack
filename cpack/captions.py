@@ -86,6 +86,22 @@ def chunks(words, style='three', per_line=4, max_lines=3):
     return out
 
 
+def srt(words, per_line=4, max_lines=2):
+    """Timed words [{"w","s","e"}] as a .srt subtitle file: full lines, two at most per block, broken at the same
+    pauses and sentence ends as the captions on screen."""
+    def ts(t):
+        ms = int(round(max(0.0, t) * 1000))
+        return f'{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d},{ms % 1000:03d}'
+    groups = chunks(words, 'lines', per_line, max_lines)
+    out = []
+    for n, ch in enumerate(groups, 1):
+        e = ch[-1]['e']
+        if n < len(groups): e = min(e + 0.25, groups[n][0]['s'])
+        text = '\n'.join(' '.join(w['w'].strip() for w in l) for l in lines_of(ch, 'lines', per_line))
+        out.append(f'{n}\n{ts(ch[0]["s"])} --> {ts(max(e, ch[0]["s"] + 0.1))}\n{text}\n')
+    return '\n'.join(out)
+
+
 def lines_of(chunk, style, per_line=4):
     if style != 'lines': return [chunk]
     if has_cjk(chunk): per_line *= 2
@@ -386,13 +402,29 @@ def plan_rows(evs, fps, motion):
 TB = 'option framerate 1000\n'
 
 
-def write_track(evs, W, H, cfg, font_path, folder, total, fps=30, seed=None):
-    """PNG strips + an ffmpeg concat list covering 0..total. Returns (list path, strip height, y offset)."""
+def band_y(evs, W, H, cfg, band):
+    """Centre y (pixels) of the captions in the empty band under the picture (black and image fits): centred
+    between the picture's bottom edge and Instagram's bottom 12%, or just under the picture when that is too small
+    for the caption's lines. band: (top band bottom, bottom band top) from shape.bands."""
+    size = font_size(W, cfg)
+    lines = max([1] + [len(e['lines']) for e in evs]) if cfg.get('style', 'three') != 'word' else 1
+    need = size * 1.18 * lines
+    gap = size * 0.45
+    top, safe = band[1], H * (1 - IG_BOTTOM)
+    if safe - top >= need + 2 * gap: return (top + safe) / 2
+    return top + gap + need / 2
+
+
+def write_track(evs, W, H, cfg, font_path, folder, total, fps=30, seed=None, band=None):
+    """PNG strips + an ffmpeg concat list covering 0..total. Returns (list path, strip height, y offset).
+    band: the empty bands round a black / image fit picture (shape.bands): the captions go centred in the one
+    below it, unless the buyer chose top."""
     from PIL import Image
     os.makedirs(folder, exist_ok=True)
     sh0 = strip_height(W, cfg); sh0 += sh0 % 2
     pos = cfg.get('position', 'bottom')
     spots = move_plan(evs, seed) if pos == 'moves' else [fixed_spot(pos)] * len(evs)
+    if band and pos != 'top': spots = [('center', band_y(evs, W, H, cfg, band) / H)] * len(evs)
     cys = [cy * H for _, cy in spots] or [POS['bottom'] * H]
     y0 = max(0, int(min(cys) - sh0 / 2)); y1 = min(H, int(max(cys) + sh0 / 2))
     sh = y1 - y0; sh -= sh % 2

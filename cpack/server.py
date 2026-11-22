@@ -18,7 +18,7 @@ VIDEO_EXT = {'.mov', '.mp4', '.m4v', '.mkv', '.avi', '.mts', '.webm'}
 MAX_JSON = 1 << 20
 PACK_ROOT = os.path.dirname(UI)
 PACK_INFO = {'root': PACK_ROOT, 'version': (prj.read_json(os.path.join(PACK_ROOT, '.claude-plugin', 'plugin.json'), {}) or {}).get('version', '')}
-WAITLIST_URL = os.environ.get('CPACK_WAITLIST_URL', 'https://breakingcycles.life')   # Story Studio "I want this": point at the real page later
+WAITLIST_URL = os.environ.get('CPACK_WAITLIST_URL', 'https://breakingcycles.life/creator-pack#story-studio')   # Story Studio "I want this"
 
 
 def inside(base, path):
@@ -71,6 +71,7 @@ def project_view(pid):
         if isinstance(v.get('qa'), dict) and 'items' in v['qa']: v['qa'] = dict(v['qa'], items=qa.surface(v['qa']['items']))
         v['captions_stale'] = pipeline.stale_captions(pj, v)
     pj['fixes'] = pj.pop('caption_fixes', None) or {}
+    pj['unheard'] = pipeline.unheard(pid, pj)   # clips nobody has listened to yet
     pj['title'] = next((x['title'] for x in prj.listing() if x['id'] == pid), None) or prj.title_of(pj, pj['storyboard'])   # with its "(2)" if the name is taken
     pj['chat'] = prj.chat(pid)
     pj['jobs'] = [{k: j.get(k) for k in ('id', 'type', 'status', 'text', 'reply', 'created', 'taken')} for j in jobs.listing(prj.jobs_dir(), pid)][-20:]
@@ -182,8 +183,22 @@ class Handler(BaseHTTPRequestHandler):
                                    'pack': PACK_INFO})
             m = re.fullmatch(r'/api/project/([a-z0-9-]+)/captions/(\d+)', path)
             if m: return self._json(pipeline.captions_view(m.group(1), int(m.group(2))))
+            m = re.fullmatch(r'/api/project/([a-z0-9-]+)/heard', path)
+            if m: return self._json(pipeline.heard_words(m.group(1)))
             m = re.fullmatch(r'/api/project/([a-z0-9-]+)', path)
             if m: return self._json(project_view(m.group(1)))
+            m = re.fullmatch(r'/media/([a-z0-9-]+)/(still|vframe)/(.+)', path)
+            if m:   # a picture of a story part (Story cards) or of a finished version (Finish), made on first ask
+                pid, kind, name = m.groups(); prj.load(pid)
+                if kind == 'still':
+                    try: t = float(parse_qs(u.query).get('t', ['0'])[0])
+                    except ValueError: return self._err(400, 'bad time')
+                    f = pipeline.still(pid, name, t)
+                else:
+                    if not name.isdigit(): return self._err(404, 'not found')
+                    f = pipeline.version_frame(pid, int(name))
+                if not inside(prj.folder(pid), f): return self._err(404, 'not found')
+                return self._file(f, 'image/jpeg')
             m = re.fullmatch(r'/media/([a-z0-9-]+)/(frame|proxy|video)/(.+)', path)
             if m:
                 pid, kind, name = m.groups()
@@ -220,16 +235,18 @@ class Handler(BaseHTTPRequestHandler):
             if act == 'pick':
                 paths = P.pick_files()
                 added, errors = pipeline.add_takes(pid, paths)
-                return self._json({'added': added, 'errors': errors})
+                return self._json({'added': added, 'errors': errors, 'relisten': pipeline.footage_changed(pid) if added else None})
             if act == 'add':
                 paths = [str(x) for x in (body.get('paths') or [])][:20]
                 added, errors = pipeline.add_takes(pid, [x for x in paths if os.path.splitext(x)[1].lower() in VIDEO_EXT])
                 if len(added) < len(paths) and not errors: errors = ['Only video files can be added']
-                return self._json({'added': added, 'errors': errors})
+                return self._json({'added': added, 'errors': errors, 'relisten': pipeline.footage_changed(pid) if added else None})
             if act == 'remove_take':
-                return self._json(pipeline.remove_take(pid, str(body.get('name', ''))))
+                out = pipeline.remove_take(pid, str(body.get('name', '')))
+                return self._json(dict(out, relisten=pipeline.footage_changed(pid)))
             if act == 'scan':
-                return self._json(pipeline.scan(pid))
+                out = pipeline.scan(pid)
+                return self._json(dict(out, relisten=pipeline.footage_changed(pid) if out['added'] else None))
             if act == 'open_folder':
                 pj = prj.load(pid); d = prj.sub(pj, str(body.get('sub') or 'Footage'))
                 prj.update(pid, lambda x: x.update(folder=pj['folder']))
@@ -276,9 +293,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not any(x['v'] == v for x in prj.load(pid)['versions']): return self._err(400, 'no such version')
                 background(pid, pipeline.recaption, v); return self._json({'started': True})
             if act == 'export':
-                out = pipeline.export(pid, body.get('v'))
+                out = pipeline.export(pid, body.get('v'), srt=bool(body.get('srt')))
                 if body.get('reveal', True) and not os.environ.get('CPACK_NO_REVEAL'): P.reveal(out)   # tests keep Finder shut
-                return self._json({'path': out})
+                ex = (prj.load(pid).get('exports') or [{}])[-1]
+                return self._json({'path': out, 'srt': ex.get('srt', '') if ex.get('path') == out else ''})
             return self._err(404, 'not found')
         except KeyError: return self._err(404, 'no such project')
         except (ValueError, RuntimeError) as e: return self._err(400, str(e))
@@ -305,7 +323,7 @@ class Handler(BaseHTTPRequestHandler):
         if left: os.remove(tmp); return self._err(400, 'upload cut short')
         os.replace(tmp, dst)
         added, errors = pipeline.add_takes(pid, [dst])
-        return self._json({'added': added, 'errors': errors})
+        return self._json({'added': added, 'errors': errors, 'relisten': pipeline.footage_changed(pid) if added else None})
 
 
 def serve(port=8765, open_browser=False):

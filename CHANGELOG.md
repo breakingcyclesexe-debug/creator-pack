@@ -2,6 +2,17 @@
 
 Creator Pack Editor, beta. Newest first. Each version here is a tag and a release on the beta repo.
 
+## 0.1.3-beta (22 Nov 2026)
+
+- New layout: your video big in the middle on every step, steps down the side, chat at the bottom.
+- Story as picture cards: your hook marked first, drag to reorder, switch takes, leave parts out, undo.
+- Punch-in zooms at each cut, centred on your face, with an optional slow push on the hook.
+- Your hook on screen at the start: Soft, Clean or Poster.
+- Sideways video in an upright frame: Fill, Black bars (new default), Picture background or Blur. Words sit in the empty space.
+- Shapes renamed: Full screen and Feed post.
+- Change your footage and it listens again on its own.
+- Export can also save a captions file (.srt).
+
 ## 0.1.2-beta (22 Nov 2026)
 
 - Opening the page no longer makes an empty video each time.

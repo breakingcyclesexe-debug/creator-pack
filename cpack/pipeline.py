@@ -8,7 +8,7 @@
   export        copy the chosen version to the Exports folder and show it in Finder
 """
 import json, os, re, shutil, threading, time, traceback
-from . import project as prj, media, transcribe, storyboard, render, qa, jobs, cutrules, captions
+from . import project as prj, media, transcribe, storyboard, render, qa, jobs, cutrules, captions, titles
 from .platform import get as platform
 
 P = platform()
@@ -117,11 +117,14 @@ def hear(pid):
     pj = prj.load(pid)
     tr = prj.read_json(os.path.join(prj.folder(pid), 'transcript.json'), {})
     lang = pj['settings'].get('language', 'auto')
-    for n, t in enumerate(pj['takes'], 1):
-        if t['name'] in tr: continue
-        _progress(pid, 'hearing', (n - 1) / len(pj['takes']), f'Hearing take {n} of {len(pj["takes"])}')
-        e = media.energy(t['path'], cache(pid, f'energy-{t["name"]}.npy'))
-        tr[t['name']] = transcribe.take_transcript(t['path'], lang, e)
+    while True:   # a clip added or taken out while it listens is picked up before the story is asked for
+        pj = prj.load(pid)
+        todo = [t for t in pj['takes'] if t['name'] not in tr]
+        if not todo: break
+        for n, t in enumerate(todo, 1):
+            _progress(pid, 'hearing', (n - 1) / len(todo), f'Hearing take {n} of {len(todo)}')
+            e = media.energy(t['path'], cache(pid, f'energy-{t["name"]}.npy'))
+            tr[t['name']] = transcribe.take_transcript(t['path'], lang, e)
     tr = {k: v for k, v in tr.items() if any(t['name'] == k for t in pj['takes'])}
     prj.write_json(os.path.join(prj.folder(pid), 'transcript.json'), tr)
     words = sum(len(v['words']) for v in tr.values())
@@ -129,11 +132,70 @@ def hear(pid):
     job = jobs.new(prj.jobs_dir(), 'story', pid, f'Build the storyboard ({pj["settings"]["mode"]} mode)', mode=pj['settings']['mode'])
 
     def fin(pj):
-        pj.update(stage='story_wait', progress={'step': 'story_wait', 'pct': 0, 'label': 'Waiting for Claude Code to build your story', 'at': time.time()},
+        pj.update(stage='story_wait', relisten=None, progress={'step': 'story_wait', 'pct': 0, 'label': 'Waiting for Claude Code to build your story', 'at': time.time()},
                   story_job=job['id'], plan_use=plan_use(words), words=words)
         pj['timings']['hear'] = heard_s; pj['timings']['story_queued_at'] = time.time()
     prj.update(pid, fin)
     return job
+
+
+def unheard(pid, pj=None):
+    """Clips not listened to yet."""
+    pj = pj or prj.load(pid)
+    tr = prj.read_json(os.path.join(prj.folder(pid), 'transcript.json'), {}) or {}
+    return [t['name'] for t in pj['takes'] if t['name'] not in tr]
+
+
+def hear_new(pid):
+    """Listen to the clips added after the story was found. The story stays open meanwhile; the page then asks
+    whether to fit them in or start fresh."""
+    pj = prj.load(pid)
+    tr = prj.read_json(os.path.join(prj.folder(pid), 'transcript.json'), {}) or {}
+    lang = pj['settings'].get('language', 'auto')
+    try:
+        todo = [t for t in pj['takes'] if t['name'] not in tr]
+        for n, t in enumerate(todo, 1):
+            prj.update(pid, lambda pj: pj.update(listening_new={'at': (pj.get('listening_new') or {}).get('at', time.time()), 'label': f'Clip {n} of {len(todo)}'}))
+            e = media.energy(t['path'], cache(pid, f'energy-{t["name"]}.npy'))
+            tr[t['name']] = transcribe.take_transcript(t['path'], lang, e)
+            cur = prj.read_json(os.path.join(prj.folder(pid), 'transcript.json'), {}) or {}
+            cur[t['name']] = tr[t['name']]
+            prj.write_json(os.path.join(prj.folder(pid), 'transcript.json'), cur)
+    finally:
+        prj.update(pid, lambda pj: pj.update(listening_new=None))
+
+
+def _quietly(pid, fn):
+    try: fn(pid)
+    except Exception as e:
+        traceback.print_exc()
+        prj.update(pid, lambda pj: pj.update(errors=[str(e)[:500]], progress=None, listening_new=None))
+
+
+def footage_changed(pid, run=True):
+    """A clip was added or taken out after the clips were heard (a tester, 22 Nov: a new 25 minute clip in, the old one
+    out, Next, and no story ever came). The Story step never waits on footage nobody has listened to:
+      'fresh'    the story has no part left from the clips there now (or there is none): listen again to every
+                 clip (what was heard is kept, only new clips take time) and find a new story; the old one stays a version
+      'new'      the story still works: listen to the new clips now, keep the story, the page asks fit in or fresh
+      'hearing'  it is listening right now and picks the change up before it finishes
+      None       nothing to do (not heard yet, no clips, a video being made, nothing new)"""
+    pj = prj.load(pid)
+    if not pj['takes'] or pj.get('stage') in (None, 'footage', 'cutting'): return None
+    if pj.get('stage') == 'hearing': return 'hearing'
+    sb = load_story(pid)
+    names = {t['name'] for t in pj['takes']}
+    usable = bool(sb) and any(b.get('keep', True) and b.get('take') in names for b in sb.get('beats', []))
+    if not usable or pj.get('stage') == 'story_wait':
+        prj.update(pid, lambda pj: pj.update(relisten={'at': time.time()}, new_clips=[], offer_back=None, stage='hearing', errors=[]))
+        if run: threading.Thread(target=_quietly, args=(pid, start_fresh), daemon=True).start()
+        return 'fresh'
+    if unheard(pid, pj):
+        if pj.get('listening_new'): return 'new'
+        prj.update(pid, lambda pj: pj.update(listening_new={'at': time.time(), 'label': ''}))
+        if run: threading.Thread(target=_quietly, args=(pid, hear_new), daemon=True).start()
+        return 'new'
+    return None
 
 
 def transcript_takes(pid):
@@ -423,7 +485,8 @@ def recaption(pid, v):
         _busy.pop(pid, None)
 
 
-def export(pid, v=None, dest=None):
+def export(pid, v=None, dest=None, srt=False):
+    """Copy version v to Exports. srt: also save its captions as a .srt file beside it (same words, same breaks)."""
     pj = prj.load(pid)
     if not pj['versions']: raise RuntimeError('no cut to export yet')
     rec = pj['versions'][-1] if v is None else next(x for x in pj['versions'] if x['v'] == int(v))
@@ -436,5 +499,64 @@ def export(pid, v=None, dest=None):
     safe = ''.join(ch for ch in pj['name'] if ch.isalnum() or ch in ' -_').strip() or 'video'
     out = os.path.join(dest, f'{safe} v{rec["v"]}.mp4')
     shutil.copy2(os.path.join(prj.folder(pid), rec['video']), out)
-    prj.update(pid, lambda pj: pj.setdefault('exports', []).append({'v': rec['v'], 'path': out, 'at': time.time()}))
+    entry = {'v': rec['v'], 'path': out, 'at': time.time()}
+    if srt:
+        entry['srt'] = os.path.splitext(out)[0] + '.srt'
+        with open(entry['srt'], 'w', encoding='utf-8') as f: f.write(srt_of(pid, rec['v']))
+    prj.update(pid, lambda pj: pj.setdefault('exports', []).append(entry))
     return out
+
+
+# ---- pictures and words for the page (Story cards, version cards, the live caption on Look)
+def still(pid, take, t):
+    """A small picture of a clip at t seconds (a Story card), made once and kept in the cache."""
+    pj = prj.load(pid)
+    rec = next((x for x in pj['takes'] if x['name'] == take), None)
+    if not rec: raise KeyError(pid)
+    t = max(0.0, min(float(t), float(rec['probe'].get('duration') or 0)))
+    out = cache(pid, f'still-{take}-{t:.1f}-{int(rec.get("turn", 0)) % 360}.jpg')
+    if not os.path.exists(out):
+        tmp = out[:-4] + f'.{os.getpid()}-{threading.get_ident()}.jpg'
+        if media.frame(prj.take_path(pj, take), t, tmp, rec.get('turn', 0), width=360, probe=rec['probe']): os.replace(tmp, out)
+    return out
+
+
+def version_frame(pid, v):
+    """A picture of a finished version (its card on Finish), taken a little way in."""
+    pj = prj.load(pid)
+    rec = next((x for x in pj['versions'] if x['v'] == int(v)), None)
+    if not rec: raise KeyError(pid)
+    out = cache(pid, f'vframe-{int(v)}-{int(rec.get("captions_at") or rec.get("at") or 0)}.jpg')
+    if not os.path.exists(out):
+        tmp = out[:-4] + f'.{os.getpid()}-{threading.get_ident()}.jpg'
+        if media.frame(os.path.join(prj.folder(pid), rec['video']), min(1.5, float(rec.get('duration') or 2) / 3), tmp, width=240): os.replace(tmp, out)
+    return out
+
+
+def heard_words(pid):
+    """Every story part's words with their times in the clip, for the line under the video and the live caption:
+    {part id: [words of the take in use, then each other take]}, each word {"w", "s", "e"}."""
+    sb = load_story(pid) or {}
+    tr = prj.read_json(os.path.join(prj.folder(pid), 'transcript.json'), {}) or {}
+    def span(x):
+        ws = (tr.get(x.get('take')) or {}).get('words') or []
+        rng = x.get('words')
+        if isinstance(rng, (list, tuple)) and len(rng) == 2: pick = ws[int(rng[0]):int(rng[1]) + 1]
+        else: pick = [w for w in ws if x.get('start', 0) - 0.05 <= w.get('s', -1) <= x.get('end', 0)]
+        return [{'w': str(w.get('w', '')).strip(), 's': w.get('s'), 'e': w.get('e')} for w in pick if str(w.get('w', '')).strip()]
+    out = {b['id']: [span(b)] + [span(a) for a in (b.get('alts') or [])] for b in sb.get('beats', []) if b.get('id')}
+    # the hook line the title would put on screen (titles.pick on the first kept part, in the take in use), for the
+    # Look preview and its tiles: word indexes [n0, n1) into that part's words, and the clean style's gold word
+    hook = next((b for b in sb.get('beats', []) if b.get('id') and b.get('keep', True)), None)
+    if hook:
+        ws = out[hook['id']][(hook['use_alt'] + 1) if hook.get('use_alt') is not None and hook['use_alt'] + 1 < len(out[hook['id']]) else 0]
+        n0, n1 = titles.pick(ws) if ws else (0, 0)
+        if n1 > n0:
+            out['_title'] = {'part': hook['id'], 'n0': n0, 'n1': n1, 'text': ' '.join(w['w'] for w in ws[n0:n1]),
+                             'accent': titles.accent_index([w['w'] for w in ws[n0:n1]])}
+    return out
+
+
+def srt_of(pid, v):
+    """Version v's words as a subtitle file (with the buyer's word fixes), even when the video has no captions."""
+    return captions.srt(captions_view(pid, v)['words'])

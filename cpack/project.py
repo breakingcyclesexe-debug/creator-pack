@@ -14,18 +14,21 @@ from .platform import get as platform
 P = platform()
 
 DEFAULT_SETTINGS = {
-    'purpose': 'ig', 'format': '9:16', 'fit': 'pad', 'mode': 'find', 'script': '', 'language': 'auto',
+    'purpose': 'ig', 'format': '9:16', 'fit': 'black', 'mode': 'find', 'script': '', 'language': 'auto',
     'length': 'auto',
     'cut': {'breath': 'normal', 'fillers': True, 'pauses': True, 'repeats': True, 'best_take': True, 'max_pause': 0.7},
     'captions': {'style': 'three', 'look': 'soft', 'size': 'm', 'position': 'bottom', 'motion': True, 'color': '#ffffff',
-                 'pop': '#e3991d', 'pop_on': False, 'per_line': 4, 'upper': True},   # color, upper: kept for old projects, the look decides
+                 'pop': '#e3991d', 'pop_on': False, 'per_line': 4, 'upper': True,   # color, upper: kept for old projects, the look decides
+                 'zoom': 'punch'},   # punch-ins alternating at joins (zoom.py); 'push' adds a slow push-in on the hook
     'export': {'max_mb': 0},
+    'title': 'off',   # the hook line big at the start (titles.py): off, soft, clean, poster
+    'backdrop': {'take': '', 't': -1.0},   # the image fit's still: a take and a time; '' / -1 = the middle of the first clip
 }
-CHOICES = {'purpose': {'ig', 'yt', 'other'}, 'format': {'9:16', '16:9', '4:5', '1:1', 'source'}, 'fit': {'crop', 'pad'},
+CHOICES = {'purpose': {'ig', 'yt', 'other'}, 'format': {'9:16', '16:9', '4:5', '1:1', 'source'}, 'fit': {'crop', 'pad', 'black', 'image'},
            'mode': {'find', 'keep', 'script'}, 'length': {'auto', 'short', 'mid', 'long'},
            'cut.breath': {'tight', 'normal', 'relaxed'}, 'captions.style': {'word', 'three', 'lines', 'none'},
            'captions.size': {'s', 'm', 'l'}, 'captions.position': {'top', 'middle', 'bottom', 'left', 'right', 'moves'},
-           'captions.look': {'soft', 'clean', 'glow'}}
+           'captions.look': {'soft', 'clean', 'glow'}, 'captions.zoom': {'off', 'punch', 'push'}, 'title': {'off', 'soft', 'clean', 'poster'}}
 HEX = re.compile(r'^#[0-9a-fA-F]{6}$')
 
 
@@ -149,11 +152,16 @@ def rename_folder(pj, name):
     return new
 
 
+TITLE_FOR_LOOK = {'soft': 'soft', 'clean': 'clean', 'glow': 'soft'}   # the title style that goes with each caption look
+
+
 def create(name='My video'):
     pid = time.strftime('%Y%m%d-') + uuid.uuid4().hex[:6]
     d = folder(pid)
     os.makedirs(os.path.join(d, 'cache'), exist_ok=True)
-    pj = {'id': pid, 'name': name, 'created': time.time(), 'takes': [], 'settings': copy.deepcopy(DEFAULT_SETTINGS),
+    settings = copy.deepcopy(DEFAULT_SETTINGS)
+    settings['title'] = TITLE_FOR_LOOK.get(settings['captions'].get('look'), 'soft')   # a new video opens on its hook
+    pj = {'id': pid, 'name': name, 'created': time.time(), 'takes': [], 'settings': settings,
           'stage': 'footage', 'progress': None, 'versions': [], 'timings': {}, 'errors': [], 'folder_named': False}
     make_folder(pj)
     write_json(os.path.join(d, 'project.json'), pj)
@@ -269,8 +277,11 @@ def listing():
             pj = read_json(os.path.join(projects_dir(), pid, 'project.json'))
             if pj:
                 sb = read_json(os.path.join(projects_dir(), pid, 'storyboard.json'), {}) or {}
+                vs = pj.get('versions') or []
                 out.append({'id': pid, 'name': pj.get('name'), 'stage': pj.get('stage'), 'created': pj.get('created'),
-                            'title': title_of(pj, sb), 'story': str(sb.get('one_line', ''))[:240], 'empty': not pj.get('takes')})
+                            'title': title_of(pj, sb), 'story': str(sb.get('one_line', ''))[:240], 'empty': not pj.get('takes'),
+                            'thumb': (pj.get('takes') or [{}])[0].get('name', ''), 'versions': len(vs),   # the Your videos menu
+                            'duration': (vs[-1].get('duration') if vs else None), 'exported': bool(pj.get('exports'))})
     named = [x for x in out if not x['empty']]   # empty videos never show in the list, so they never take a number
     numbered(named)
     return out
