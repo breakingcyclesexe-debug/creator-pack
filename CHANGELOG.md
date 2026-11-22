@@ -2,6 +2,20 @@
 
 Creator Pack Editor, beta. Newest first. Each version here is a tag and a release on the beta repo.
 
+## 0.1.5-beta (22 Nov 2026)
+
+- Picture background: use a picture of your own. Next to "Use the frame on screen", "Choose a picture" (or drop one on that row) takes a jpg, png, heic or webp. It is copied into the video's project, heic becomes jpg, and it sits behind the video darkened with the vignette, the same as the still. "Use the frame on screen" goes back to the still.
+- A small "?" next to each choice explains it in two or three lines, only when you ask. Click outside or press Esc to close.
+- Sideways video on black bars or a picture background: captions go at the top (in the space above the video), on the video (low down) or at the bottom. The preview shows the same.
+- Claude starts from the page: Connect Claude on the "isn't listening" card, and on its own when a job waits. No need to go back to Claude Code. The chat dot says connected, connecting or not connected.
+- If Claude Code stops, the page notices and its job goes straight back in the queue.
+- The page no longer opens a second browser tab when it is already open.
+- Delete a video from Your videos (to the Trash, footage folder kept unless you tick it), and delete old versions on Finish. Each video shows its size.
+- Empty "New video" leftovers clean themselves up.
+- Picture background: "Use the frame on screen" works on older videos, and the Story preview shows the still behind the video, darkened like the finished video.
+- The hook on screen and top captions no longer sit on each other.
+- Videos never keep playing in the background.
+
 ## 0.1.4-beta (22 Nov 2026)
 
 - The hook title never stops on a weak word like "very".

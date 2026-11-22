@@ -34,8 +34,8 @@ def turn_filter(extra):
 #   pad    the whole picture over a soft blur of itself
 #   black  the whole picture, centred, on black (a tester, 22 Nov: "I don't like the blur, it's better to have black").
 #          The default for new projects.
-#   image  the NatGeo look: the whole picture in a thin white keyline over a still frame of the video, scaled to
-#          fill, darkened and vignetted. No blur.
+#   image  the NatGeo look: the whole picture in a thin white keyline over a still frame of the video (or the
+#          buyer's own picture, settings.backdrop.image), scaled to fill, darkened and vignetted. No blur.
 FITS = ('crop', 'pad', 'black', 'image')
 SHOWS_ALL = ('pad', 'black', 'image')   # the whole picture is shown, the frame has empty space around it
 IMAGE_INSET = 0.92   # image: the picture is this share of the frame's width (or height), so the backdrop frames it

@@ -118,6 +118,14 @@ select.ui-in{width:auto;min-height:36px;padding:4px 8px}
 .ui-cmd code{font-family:var(--mono);font-size:13.5px;padding:6px 10px;border-radius:var(--r-sm);background:var(--white);border:1px solid var(--line)}
 .ui-ccoff{margin-top:12px;padding:14px 16px;border-radius:var(--r-md);background:var(--tint);border:1px solid var(--tint-line);font-size:14px}
 .ui-ccoff b{display:block;font-size:15px;margin-bottom:2px}
+.cc-card b .ui-spin{display:inline-block;vertical-align:-2px;margin-right:8px}
+.cc-row{margin-top:10px}
+.cc-err{margin:8px 0 0;color:var(--navy);font-weight:600}
+.cc-alt{margin:10px 0 0;font-size:12.5px;color:var(--soft)}
+.cc-alt code{font-family:var(--mono);font-size:12px;padding:1px 5px;border-radius:4px;background:var(--white);border:1px solid var(--line)}
+.cc-copy{border:0;background:none;padding:0;font:inherit;color:var(--navy);text-decoration:underline;cursor:pointer}
+.ch-open.is-wait i{background:var(--amber);animation:cc-pulse 1s ease-in-out infinite alternate}
+@keyframes cc-pulse{from{opacity:.35}to{opacity:1}}
 .ui-more>summary{display:inline-flex;align-items:center;gap:8px;cursor:pointer;color:var(--navy2);font-weight:600;font-size:13.5px;list-style:none}
 .ui-more>summary::-webkit-details-marker{display:none}
 .ui-more>summary::before{content:"";width:6px;height:6px;border-right:2px solid;border-bottom:2px solid;transform:rotate(-45deg);transition:transform .15s}
@@ -164,6 +172,8 @@ select.ui-in{width:auto;min-height:36px;padding:4px 8px}
 .vm-open small{color:var(--soft);font-size:13px}
 .vm-st{flex:none;font-size:12px;color:var(--ok);font-weight:600;white-space:nowrap}
 .vm-row .ui-ib{flex:none;margin-right:6px;color:var(--soft)}
+.vm-row .ui-ib + .ui-ib{margin-left:-4px}
+.vm-row .vm-del:hover{color:var(--err)}
 .vm-row form{flex:1;display:flex;gap:8px;padding:8px}
 .vm-row form input{min-height:36px}
 
@@ -289,6 +299,10 @@ select.ui-in{width:auto;min-height:36px;padding:4px 8px}
 .st-box.is-empty{background:transparent;box-shadow:none}
 .st-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:var(--thumb);cursor:pointer}
 .st-vid.is-fit{object-fit:contain;background:#000}
+/* Blur fit: the blurred, filled copy (canvas) shows round the sharp picture, so the video itself has no black */
+.st-vid.is-fit.is-pad{background:transparent}
+.st-blur{position:absolute;inset:0;width:100%;height:100%;filter:blur(14px);transform:scale(1.12);pointer-events:none}
+.st-blur[hidden]{display:none}
 .st-big{position:absolute;inset:0;margin:auto;width:64px;height:64px;border:0;border-radius:50%;background:rgba(15,31,46,.55);color:#fff;display:grid;place-items:center;opacity:0;transition:opacity .15s;pointer-events:none}
 .st-box:hover .st-big.is-show{opacity:1}
 .st-big .ico{width:26px;height:26px}
@@ -365,7 +379,7 @@ select.ui-in{width:auto;min-height:36px;padding:4px 8px}
 .ft-pic{height:56px;display:grid;place-items:center;color:var(--navy)}
 .ft-pic .ico{width:36px;height:36px}
 .ft-fitpic{position:relative;display:block;width:50px;height:90px;border-radius:var(--r-sm);overflow:hidden;border:2px solid var(--navy);background:var(--thumb) center/cover no-repeat;flex:none}
-.ft-fitpic.is-pad::before{content:"";position:absolute;inset:-8px;background:inherit;filter:blur(6px) brightness(.8)}
+.ft-fitpic.is-pad::before{content:"";position:absolute;inset:-8px;background:inherit;filter:blur(6px) }
 .ft-fitpic.is-wide{width:90px;height:50px}
 .ft-fitpic.is-pad i{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);aspect-ratio:16/9;background:var(--thumb) center/cover no-repeat}
 .ft-fitpic.is-black{background-image:none !important;background-color:#000}
@@ -377,6 +391,9 @@ select.ui-in{width:auto;min-height:36px;padding:4px 8px}
 .ft-fit .ui-tile{flex-direction:column;text-align:center;gap:6px;padding:10px 8px}
 .ft-fit .ui-tile>span:last-child{font-size:12px}
 .ft-bgpic{width:28px;height:50px;border-radius:4px;background:var(--thumb) center/cover no-repeat;flex:none}
+#fit-bg-row{border-radius:8px;outline:2px dashed transparent;outline-offset:4px;transition:outline-color .15s}
+#fit-bg-row.is-over{outline-color:var(--amber)}
+.ft-way .ft-bghint{font-family:inherit;font-size:12.5px;color:var(--soft)}
 .ft-fitpic.is-wide.is-pad i{left:50%;right:auto;top:0;bottom:0;transform:translateX(-50%);aspect-ratio:9/16;height:100%}
 .ft-more{margin-top:12px;padding:14px 16px;border-radius:var(--r-md);background:var(--surface);border:1px solid var(--line)}
 .ft-more .ui-tiles{grid-template-columns:repeat(5,1fr);gap:8px}
@@ -439,6 +456,13 @@ span.sb-out{cursor:default}
 .lk-mini i{position:absolute;left:5px;right:5px;height:5px;border-radius:2px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
 .lk-mini .is-t{top:6px}.lk-mini .is-m{top:23px}.lk-mini .is-b{bottom:7px}.lk-mini .is-l{top:23px;right:14px}.lk-mini .is-r{top:23px;left:14px}
 .lk-mini .is-g{opacity:.45}
+/* sideways video on black bars or a picture background: Top and Bottom sit in the bands, Middle on the video */
+.lk-pic{display:none}
+.lk-where.is-banded{grid-template-columns:repeat(3,1fr)}
+.lk-where.is-banded .lk-fill{display:none}
+.lk-where.is-banded .lk-mini{background:#0b0f14}
+.lk-where.is-banded .lk-pic{display:block;position:absolute;left:0;right:0;top:16px;height:18px;background:var(--thumb) center/cover no-repeat;text-decoration:none}
+.lk-where.is-banded .lk-mini .is-t{top:6px}.lk-where.is-banded .lk-mini .is-m{top:27px}.lk-where.is-banded .lk-mini .is-b{bottom:6px}
 .lk-locks{grid-template-columns:repeat(3,1fr)}
 .lk-titles{grid-template-columns:repeat(4,1fr)}
 .lk-titles .ui-tile{padding:8px 8px 10px}
@@ -462,8 +486,17 @@ span.sb-out{cursor:default}
 .st-title .ti-band{padding-top:7.5%}
 .st-title .ti-txt.is-rise{animation:ti-rise .4s ease-out both}
 @keyframes ti-rise{from{transform:translateY(.2em);opacity:0}to{transform:none;opacity:1}}
-.st-vid.is-inset{object-fit:cover;background:transparent;box-shadow:0 0 0 2px #fff}
+.st-vid.is-inset{object-fit:cover;background:#000 center/cover no-repeat;box-shadow:0 0 0 2px #fff}
 .lk-off{opacity:.4;pointer-events:none}
+/* hp- on-demand help: a small "?" by a choice opens one short popover (app.js HELP). It sits in the tools panel,
+   never over the video, one at a time, closed by a click outside or Esc. */
+.hp-q{display:inline-grid;place-items:center;flex:none;width:24px;height:24px;margin:-3px 0;padding:0;border-radius:50%;border:1px solid var(--line2);background:var(--white);color:var(--navy);font:600 12.5px/1 var(--sans);vertical-align:middle;cursor:pointer}
+.hp-q:hover,.hp-q[aria-expanded="true"]{border-color:var(--navy);background:var(--navy);color:var(--white)}
+.hp-lab{display:flex;align-items:center;gap:10px}
+.hp-pop{position:fixed;z-index:var(--z-menu);max-width:320px;padding:10px 14px;border-radius:var(--r-md);background:var(--white);border:1px solid var(--line);box-shadow:var(--sh-2);color:var(--ink);font-size:13.5px;line-height:1.45}
+.hp-pop p+p{margin-top:4px}
+.ed-h .hp-q{align-self:center}
+.lk-pace .hp-q{margin:0}
 .lk-col{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--soft)}
 .lk-col input{width:30px;height:30px;padding:2px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--white);cursor:pointer}
 .lk-wpl{display:inline-flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;color:var(--soft)}
@@ -486,6 +519,13 @@ span.sb-out{cursor:default}
 .fn-pick>span:first-child{flex:1;min-width:0}
 .fn-pick small{display:block;color:var(--soft);font-size:13px}
 .fn-pick.is-calm{background:var(--white);border-color:var(--line);color:var(--soft)}
+.fn-spots{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto}
+.fn-spot{min-height:52px;background:var(--white);border-color:var(--line)}
+.fn-spot.is-sel{background:var(--tint);border-color:var(--amber);box-shadow:0 0 0 1px var(--amber)}
+.fn-spot>span:first-child{flex:none}
+.fn-spot>span:nth-child(2){flex:1;min-width:0}
+.fn-at{flex:none;min-width:38px;font-family:var(--mono);font-size:12px;color:var(--soft)}
+.tl-spot[hidden]{display:none}
 .fn-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--amber);margin-right:6px}
 .fn-good{color:var(--ok)}
 .fn-vers{grid-template-columns:repeat(3,1fr)}
@@ -493,6 +533,19 @@ span.sb-out{cursor:default}
 .fn-vers .fn-vph{width:36px;height:54px;border-radius:5px;background:var(--thumb) center 30%/cover no-repeat;flex:none}
 .fn-vers .ui-tile>span:last-child{font-size:12.5px;line-height:1.3;min-width:0;overflow:hidden}
 .fn-vers .ui-tile b{font-size:13px}
+.fn-vcard{position:relative;display:grid}
+.fn-vdel{position:absolute;top:4px;right:4px;width:26px;height:26px;background:var(--white);color:var(--soft)}
+.fn-vdel:hover{color:var(--err)}
+/* ---------- delete, to the Trash (dl-) ---------- */
+.dl-box{z-index:var(--z-dialog);width:min(440px,92vw);padding:24px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--white);color:var(--ink);box-shadow:var(--sh-3)}
+.dl-box::backdrop{background:rgba(15,31,46,.45)}
+.dl-box h2{margin:0 0 8px;font-size:18px}
+.dl-what{margin:0;font-size:14.5px;line-height:1.45}
+.dl-also{display:flex;gap:10px;align-items:flex-start;margin-top:14px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);font-size:14px;cursor:pointer}
+.dl-also input{margin-top:3px}
+.dl-note{margin:12px 0 0;font-size:13px;color:var(--soft)}
+.dl-acts{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.dl-ok{background:var(--err);border-color:var(--err);color:#fff}
 .fn-locks{grid-template-columns:1fr 1fr}
 .fn-prog{margin-bottom:12px}
 
@@ -523,8 +576,6 @@ span.sb-out{cursor:default}
 .ch-m.is-work b{display:block}
 .ch-m.is-work small{display:block;color:var(--soft);font-size:13px}
 .ch-m.is-ev{align-self:stretch;max-width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--ok-bg);border:1px solid var(--ok-line);font-weight:600;white-space:normal}
-.ch-m.is-offer{align-self:stretch;max-width:100%;background:transparent;border:1px dashed var(--line);color:var(--soft);font-size:13.5px;white-space:normal}
-.ch-m.is-offer .ui-btn{margin-top:8px;width:100%;justify-content:space-between;border-style:dashed;border-color:var(--line);color:var(--muted);font-weight:500;opacity:1}
 .ch-confirm{align-self:stretch;padding:14px;border-radius:var(--r-lg);background:var(--tint);border:1.5px solid var(--amber)}
 .ch-confirm>b{display:block;font-size:15px}
 .ch-confirm .ui-row{display:flex;gap:8px;margin-top:10px}
@@ -573,6 +624,7 @@ body.is-setup #toast{left:50%}
   <symbol id="i-title" viewBox="0 0 24 24"><path d="M5 6h14M12 6v13M9 19h6"/></symbol>
   <symbol id="i-talk" viewBox="0 0 24 24"><path d="M4 5h16v10H10l-5 4v-4H4z"/><path d="M8 9h8M8 12h5"/></symbol>
   <symbol id="i-page" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></symbol>
   <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/></symbol>
   <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z"/></symbol>
   <symbol id="i-py" viewBox="0 0 24 24"><path d="M9 3h6a3 3 0 0 1 3 3v4H9a3 3 0 0 0-3 3v3H5a2 2 0 0 1-2-2V9a3 3 0 0 1 3-3h3zM15 21H9a3 3 0 0 1-3-3v-4h9a3 3 0 0 0 3-3V8h1a2 2 0 0 1 2 2v5a3 3 0 0 1-3 3h-3z"/></symbol>
@@ -628,6 +680,7 @@ body.is-setup #toast{left:50%}
   <section class="st" id="stage" aria-label="Your video">
     <div class="st-h"><span id="st-l"></span><span class="st-tag" id="st-r"></span></div>
     <div class="st-box" id="st-box">
+      <canvas class="st-blur" id="st-blur" aria-hidden="true" hidden></canvas>
       <video class="st-vid" id="st-raw" playsinline preload="metadata"></video>
       <video class="st-vid" id="cut-player" playsinline preload="metadata" hidden></video>
       <div class="st-title" id="st-title" aria-hidden="true"></div>
@@ -667,7 +720,7 @@ body.is-setup #toast{left:50%}
               <label class="ui-pick"><input type="radio" name="purpose" value="yt"><span class="ui-tile"><span class="ft-pic"><i class="ui-shape" style="width:80px;height:45px"></i></span><b>YouTube</b></span></label>
               <label class="ui-pick"><input type="radio" name="purpose" value="other"><span class="ui-tile"><span class="ft-pic"><i class="ui-shape" style="width:46px;height:46px;border-style:dashed"></i></span><b>Other</b></span></label>
             </div></div>
-          <div class="ui-q"><h2>How did you film it?</h2>
+          <div class="ui-q"><h2>How did you film it? <button type="button" class="hp-q" data-help="filmed" aria-label="What this means" aria-expanded="false" aria-controls="hp-pop">?</button></h2>
             <div class="ui-tiles" style="grid-template-columns:1fr 1fr" role="radiogroup" aria-label="How did you film it?">
               <label class="ui-pick"><input type="radio" name="filmed" value="talk" checked><span class="ui-tile"><span class="ft-pic"><svg class="ico"><use href="#i-talk"/></svg></span><b>Just talked</b></span></label>
               <label class="ui-pick"><input type="radio" name="filmed" value="script"><span class="ui-tile"><span class="ft-pic"><svg class="ico"><use href="#i-page"/></svg></span><b>Read a script</b></span></label>
@@ -675,18 +728,18 @@ body.is-setup #toast{left:50%}
         </div>
         <fieldset class="ui-q ft-fit" id="fit-q" hidden>
           <legend class="sr" id="fit-legend-sr"></legend>
-          <h2 id="fit-legend">How should it fit?</h2>
+          <h2><span id="fit-legend">How should it fit?</span> <button type="button" class="hp-q" data-help="fit" aria-label="What this means" aria-expanded="false" aria-controls="hp-pop">?</button></h2>
           <div class="ui-tiles" style="grid-template-columns:repeat(4,1fr)">
-            <label class="ui-pick"><input type="radio" name="fit" value="crop"><span class="ui-tile"><span class="ft-fitpic"></span><b>Fill</b><span>Zooms in, follows your face</span></span></label>
-            <label class="ui-pick"><input type="radio" name="fit" value="black" checked><span class="ui-tile"><span class="ft-fitpic is-black"><i></i></span><b>Black bars</b><span>All of it, on black</span></span></label>
-            <label class="ui-pick"><input type="radio" name="fit" value="image"><span class="ui-tile"><span class="ft-fitpic is-image"><i></i></span><b>Picture background</b><span>All of it, on a still</span></span></label>
-            <label class="ui-pick"><input type="radio" name="fit" value="pad"><span class="ui-tile"><span class="ft-fitpic is-pad"><i></i></span><b>Blur</b><span>All of it, on a soft blur</span></span></label>
+            <label class="ui-pick"><input type="radio" name="fit" value="crop"><span class="ui-tile"><span class="ft-fitpic"></span><b>Fill</b></span></label>
+            <label class="ui-pick"><input type="radio" name="fit" value="black" checked><span class="ui-tile"><span class="ft-fitpic is-black"><i></i></span><b>Black bars</b></span></label>
+            <label class="ui-pick"><input type="radio" name="fit" value="image"><span class="ui-tile"><span class="ft-fitpic is-image"><i></i></span><b>Picture background</b></span></label>
+            <label class="ui-pick"><input type="radio" name="fit" value="pad"><span class="ui-tile"><span class="ft-fitpic is-pad"><i></i></span><b>Blur</b></span></label>
           </div>
-          <div class="ft-way" id="fit-bg-row" hidden><span class="ft-bgpic" id="fit-bg-pic"></span>Background: <b id="fit-bg-say">the middle of your first clip</b><button type="button" class="ui-btn is-sm" id="fit-bg">Use the frame on screen</button></div>
+          <div class="ft-way" id="fit-bg-row" hidden><span class="ft-bgpic" id="fit-bg-pic"></span>Background: <b id="fit-bg-say">the middle of your first clip</b><button type="button" class="ui-btn is-sm" id="fit-bg">Use the frame on screen</button><button type="button" class="ui-btn is-sm" id="fit-bg-choose">Choose a picture</button><input type="file" id="fit-bg-file" accept="image/jpeg,image/png,image/heic,image/heif,image/webp,.jpg,.jpeg,.png,.heic,.heif,.webp" hidden><span class="ft-bghint">or drop one here</span></div>
         </fieldset>
         <div class="ui-two">
-          <div class="ui-q"><h2>How long?</h2><div class="ui-seg" id="len-seg" role="radiogroup" aria-label="How long?"></div></div>
-          <div class="ui-q" id="talk-box"><h2>Can we move parts around?</h2><div class="ui-seg" role="radiogroup" aria-label="Can we move parts around?">
+          <div class="ui-q"><h2>How long? <button type="button" class="hp-q" data-help="length" aria-label="What this means" aria-expanded="false" aria-controls="hp-pop">?</button></h2><div class="ui-seg" id="len-seg" role="radiogroup" aria-label="How long?"></div></div>
+          <div class="ui-q" id="talk-box"><h2>Can we move parts around? <button type="button" class="hp-q" data-help="order" aria-label="What this means" aria-expanded="false" aria-controls="hp-pop">?</button></h2><div class="ui-seg" role="radiogroup" aria-label="Can we move parts around?">
             <label class="ui-pick"><input type="radio" name="order" value="find" checked><span>Yes, tell it better</span></label>
             <label class="ui-pick"><input type="radio" name="order" value="keep"><span>No, keep my order</span></label></div></div>
         </div>
@@ -694,7 +747,7 @@ body.is-setup #toast{left:50%}
         <div class="ui-q"><h2>We worked out <small>Wrong? Click to change.</small></h2>
           <div class="ui-chips" id="ft-guess"></div>
           <div class="ft-more" id="more" hidden>
-            <div class="ui-lab">Shape of the video</div>
+            <div class="ui-lab hp-lab">Shape of the video <button type="button" class="hp-q" data-help="shape" aria-label="What this means" aria-expanded="false" aria-controls="hp-pop">?</button></div>
             <div class="ui-tiles" role="radiogroup" aria-label="Shape of the video" style="margin-top:8px">
               <label class="ui-pick"><input type="radio" name="format" value="9:16" checked><span class="ui-tile"><span class="ft-pic"><i class="ui-shape" style="width:27px;height:48px"></i></span><b>Full screen</b>Reels, Shorts, TikTok</span></label>
               <label class="ui-pick"><input type="radio" name="format" value="4:5"><span class="ui-tile"><span class="ft-pic"><i class="ui-shape" style="width:36px;height:45px"></i></span><b>Feed post</b>Instagram feed</span></label>
@@ -748,7 +801,7 @@ body.is-setup #toast{left:50%}
 
     <!-- 3 LOOK: captions, what we cut out, then make the video -->
     <div class="ed-step" id="p3" hidden>
-      <div class="ed-h"><h1 tabindex="-1">Pick your captions</h1><p>Always exactly what you said.</p></div>
+      <div class="ed-h"><h1 tabindex="-1">Pick your captions</h1><button type="button" class="hp-q" data-help="look" aria-label="What this means" aria-expanded="false" aria-controls="hp-pop">?</button><p>Always exactly what you said.</p></div>
       <div class="ed-b">
         <div class="ui-tiles lk-looks" id="look-card" role="radiogroup" aria-label="How should they look?">
           <label class="ui-pick"><input type="radio" name="c-look" value="soft" checked><span class="ui-tile"><span class="lk-ph"><span class="lk-txt lk-soft"></span></span><b>Soft</b></span></label>
@@ -756,18 +809,18 @@ body.is-setup #toast{left:50%}
           <label class="ui-pick"><input type="radio" name="c-look" value="glow"><span class="ui-tile"><span class="lk-ph"><span class="lk-txt lk-glow"></span></span><b>Glow</b></span></label>
         </div>
         <div id="cap-more">
-          <div class="ui-q"><h2>Where</h2>
+          <div class="ui-q"><h2>Where <button type="button" class="hp-q" data-help="where" id="hp-where" aria-label="What this means" aria-expanded="false" aria-controls="hp-pop">?</button></h2>
             <div class="ui-tiles lk-where" role="radiogroup" aria-label="Where on the screen">
-              <label class="ui-pick"><input type="radio" name="c-cpos" value="top"><span class="ui-tile"><span class="lk-mini"><i class="is-t"></i></span>Top</span></label>
-              <label class="ui-pick"><input type="radio" name="c-cpos" value="middle"><span class="ui-tile"><span class="lk-mini"><i class="is-m"></i></span>Middle</span></label>
-              <label class="ui-pick"><input type="radio" name="c-cpos" value="bottom" checked><span class="ui-tile"><span class="lk-mini"><i class="is-b"></i></span>Bottom</span></label>
-              <label class="ui-pick"><input type="radio" name="c-cpos" value="left"><span class="ui-tile"><span class="lk-mini"><i class="is-l"></i></span>Left</span></label>
-              <label class="ui-pick"><input type="radio" name="c-cpos" value="right"><span class="ui-tile"><span class="lk-mini"><i class="is-r"></i></span>Right</span></label>
-              <label class="ui-pick"><input type="radio" name="c-cpos" value="moves"><span class="ui-tile"><span class="lk-mini"><i class="is-t is-g"></i><i class="is-m"></i><i class="is-b is-g"></i></span>Moves around</span></label>
+              <label class="ui-pick"><input type="radio" name="c-cpos" value="top"><span class="ui-tile"><span class="lk-mini"><s class="lk-pic"></s><i class="is-t"></i></span>Top</span></label>
+              <label class="ui-pick"><input type="radio" name="c-cpos" value="middle"><span class="ui-tile"><span class="lk-mini"><s class="lk-pic"></s><i class="is-m"></i></span><span class="lk-say-m">Middle</span></span></label>
+              <label class="ui-pick"><input type="radio" name="c-cpos" value="bottom" checked><span class="ui-tile"><span class="lk-mini"><s class="lk-pic"></s><i class="is-b"></i></span>Bottom</span></label>
+              <label class="ui-pick lk-fill"><input type="radio" name="c-cpos" value="left"><span class="ui-tile"><span class="lk-mini"><i class="is-l"></i></span>Left</span></label>
+              <label class="ui-pick lk-fill"><input type="radio" name="c-cpos" value="right"><span class="ui-tile"><span class="lk-mini"><i class="is-r"></i></span>Right</span></label>
+              <label class="ui-pick lk-fill"><input type="radio" name="c-cpos" value="moves"><span class="ui-tile"><span class="lk-mini"><i class="is-t is-g"></i><i class="is-m"></i><i class="is-b is-g"></i></span>Moves around</span></label>
             </div></div>
         </div>
         <div class="ui-two">
-          <div class="ui-q"><h2>Words at a time</h2><div class="ui-seg" role="radiogroup" aria-label="Words at a time">
+          <div class="ui-q"><h2>Words at a time <button type="button" class="hp-q" data-help="words" aria-label="What this means" aria-expanded="false" aria-controls="hp-pop">?</button></h2><div class="ui-seg" role="radiogroup" aria-label="Words at a time">
             <label class="ui-pick"><input type="radio" name="cap" value="word"><span>One</span></label>
             <label class="ui-pick"><input type="radio" name="cap" value="three" checked><span>A few</span></label>
             <label class="ui-pick"><input type="radio" name="cap" value="lines"><span>Full line</span></label>
@@ -779,33 +832,34 @@ body.is-setup #toast{left:50%}
             <label class="ui-pick"><input type="radio" name="c-csize" value="l"><span>L</span></label></div></div>
         </div>
         <div class="ui-two">
-          <div class="ui-q" id="motion-q"><h2>Motion</h2><div class="ui-chips">
+          <div class="ui-q" id="motion-q"><h2>Motion <button type="button" class="hp-q" data-help="motion" aria-label="What this means" aria-expanded="false" aria-controls="hp-pop">?</button></h2><div class="ui-chips">
             <label class="ui-pick ui-chk"><input type="checkbox" id="c-motion" checked><span><i></i>Words pop in</span></label>
             <label class="ui-pick ui-chk"><input type="checkbox" id="c-popon"><span><i></i>Light up each word</span></label>
             <label class="lk-col" id="c-hi-f" hidden><span class="sr">Colour</span><input type="color" id="c-hi" value="#e3991d" title="Colour of the word being said"></label></div></div>
-          <div class="ui-q"><h2>We cut out</h2><div class="ui-chips">
+          <div class="ui-q"><h2>We cut out <button type="button" class="hp-q" data-help="cut" aria-label="What this means" aria-expanded="false" aria-controls="hp-pop">?</button></h2><div class="ui-chips">
             <label class="ui-pick ui-chk"><input type="checkbox" id="q-filler" checked><span><i></i>Ums</span></label>
             <label class="ui-pick ui-chk"><input type="checkbox" id="q-pause" checked><span><i></i>Long pauses</span></label>
             <label class="ui-pick ui-chk"><input type="checkbox" id="q-best" checked><span><i></i>Retakes</span></label></div>
-            <div class="lk-pace"><span>Pace</span><div class="ui-seg" role="radiogroup" aria-label="Pause between sentences">
+            <div class="lk-pace"><span>Pace</span><button type="button" class="hp-q" data-help="pace" aria-label="What this means" aria-expanded="false" aria-controls="hp-pop">?</button><div class="ui-seg" role="radiogroup" aria-label="Pause between sentences">
               <label class="ui-pick"><input type="radio" name="breath" value="tight"><span>Tight</span></label>
               <label class="ui-pick"><input type="radio" name="breath" value="normal" checked><span>Normal</span></label>
               <label class="ui-pick"><input type="radio" name="breath" value="relaxed"><span>Relaxed</span></label></div></div>
             <p class="su-msg" id="kept-reps" style="margin-top:8px" hidden></p></div>
         </div>
-        <div class="ui-q" id="title-q"><h2>Your hook on screen</h2>
+        <div class="ui-q" id="title-q"><h2>Your hook on screen <button type="button" class="hp-q" data-help="hook" aria-label="What this means" aria-expanded="false" aria-controls="hp-pop">?</button></h2>
           <div class="ui-tiles lk-titles" role="radiogroup" aria-label="Your hook on screen">
             <label class="ui-pick"><input type="radio" name="title" value="off"><span class="ui-tile"><span class="lk-ph is-sm"></span><b>Off</b></span></label>
             <label class="ui-pick"><input type="radio" name="title" value="soft"><span class="ui-tile"><span class="lk-ph is-sm"><span class="ti-band"><span class="ti-txt ti-soft"></span></span></span><b>Soft</b></span></label>
             <label class="ui-pick"><input type="radio" name="title" value="clean"><span class="ui-tile"><span class="lk-ph is-sm"><span class="ti-band"><span class="ti-txt ti-clean"></span></span></span><b>Clean</b></span></label>
             <label class="ui-pick"><input type="radio" name="title" value="poster"><span class="ui-tile"><span class="lk-ph is-sm"><span class="ti-band"><span class="ti-txt ti-poster"></span></span></span><b>Poster</b></span></label>
           </div></div>
-        <div class="ui-q" id="zoom-q"><h2>Zoom in at cuts</h2>
+        <div class="ui-q" id="zoom-q"><h2>Zoom in at cuts <button type="button" class="hp-q" data-help="zoom" aria-label="What this means" aria-expanded="false" aria-controls="hp-pop">?</button></h2>
           <div class="ui-tiles lk-zooms" role="radiogroup" aria-label="Zoom in at cuts">
             <label class="ui-pick"><input type="radio" name="c-zoom" value="off"><span class="ui-tile"><span class="lk-zpics"><span class="lk-mini"></span><span class="lk-mini"></span></span><b>Off</b></span></label>
             <label class="ui-pick"><input type="radio" name="c-zoom" value="punch" checked><span class="ui-tile"><span class="lk-zpics"><span class="lk-mini"></span><span class="lk-mini is-zoom"></span></span><b>At each cut</b></span></label>
             <label class="ui-pick"><input type="radio" name="c-zoom" value="push"><span class="ui-tile"><span class="lk-zpics"><span class="lk-mini is-push"></span><span class="lk-mini is-zoom"></span></span><b>At each cut + slow push on the hook</b></span></label>
-          </div></div>
+          </div>
+          <p class="ui-note" id="zoom-hint" hidden><svg class="ico"><use href="#i-bulb"/></svg><span><span id="zoom-hint-t"></span> <button type="button" class="ui-link" id="zoom-fill">Switch to Fill</button></span></p></div>
         <div class="ui-q"><h2>Coming next</h2>
           <div class="ui-tiles lk-locks">
             <div class="ui-tile is-lock"><svg class="ico"><use href="#i-lock"/></svg><div><b>Your own look</b><span>your fonts and colours</span></div></div>
@@ -828,29 +882,28 @@ body.is-setup #toast{left:50%}
           <div class="fn-exp">
             <span class="fn-exp-ph" id="fn-ph"></span>
             <div><b id="vtag"></b><small id="stats"></small>
-              <div class="ui-chips"><label class="ui-pick ui-chk"><input type="checkbox" id="fn-srt"><span><i></i>Also save captions file (.srt)</span></label></div></div>
+              <div class="ui-chips"><label class="ui-pick ui-chk"><input type="checkbox" id="fn-srt"><span><i></i>Also save captions file (.srt)</span></label><button type="button" class="hp-q" data-help="srt" aria-label="What this means" aria-expanded="false" aria-controls="hp-pop">?</button></div></div>
             <button type="button" class="ui-btn is-primary" id="fin-primary">Export</button>
           </div>
           <div class="fn-saved" id="final" hidden tabindex="-1"></div>
           <p class="su-msg" id="p5-msg" style="margin-top:8px"></p>
-          <div class="ui-q"><h2>Worth a look <small id="spot-key"></small></h2>
-            <div class="fn-pick is-calm" id="pick"></div></div>
+          <div class="ui-q"><h2>Worth a look <button type="button" class="hp-q" data-help="spots" aria-label="What this means" aria-expanded="false" aria-controls="hp-pop">?</button><small id="spot-key"></small></h2>
+            <div class="fn-spots" id="pick"></div></div>
           <div class="ui-q" id="vers-q" hidden><h2>Versions</h2>
             <div class="ui-tiles fn-vers" id="vchips" role="radiogroup" aria-label="Versions"></div></div>
           <div class="ui-q"><h2>Coming next</h2>
             <div class="ui-tiles fn-locks">
               <div class="ui-tile is-lock"><svg class="ico"><use href="#i-lock"/></svg><div><b>Fine-tune in DaVinci</b><span>trim it by hand on a timeline</span></div></div>
-              <div class="ui-tile is-lock"><svg class="ico"><use href="#i-lock"/></svg><div><b>Fine-tune in Edits</b><span>songs and stickers on your phone</span></div></div>
             </div></div>
         </div>
       </div>
     </div>
 
+    <div class="hp-pop" id="hp-pop" role="dialog" aria-modal="false" aria-label="What this means" hidden></div>
     <!-- CHAT: opens over the tools, never over the video -->
     <div class="ch-thread" id="chat" hidden aria-label="Chat about this video">
       <div class="ch-head"><h2>Chat</h2><button type="button" class="ui-btn is-sm" id="ch-close">Close</button></div>
-      <div class="ui-ccoff" id="chat-off" hidden><b>Claude isn't listening right now</b>In the Claude app, open Claude Code and send this message. It picks up from here by itself.
-        <div class="ui-cmd"><code>/creator-pack</code><button type="button" class="ui-btn is-sm" data-copy="/creator-pack">Copy</button></div></div>
+      <div class="ui-ccoff cc-card" id="chat-off" hidden></div>
       <ol class="ch-msgs" id="msgs" aria-live="polite"></ol>
     </div>
     <div class="ch-dock" id="ch-dock">
@@ -882,6 +935,15 @@ body.is-setup #toast{left:50%}
   <div><input type="text" class="ui-in" id="wf-in" maxlength="40" autocomplete="off" spellcheck="false"><button type="submit" class="ui-btn is-navy is-sm" id="wf-go" style="min-height:36px">Change</button></div>
   <p id="wf-hint"></p>
 </form>
+<dialog class="dl-box" id="dl" aria-labelledby="dl-h">
+  <form method="dialog">
+    <h2 id="dl-h"></h2>
+    <p class="dl-what" id="dl-what"></p>
+    <label class="dl-also" id="dl-also-row"><input type="checkbox" id="dl-also"><span id="dl-also-t"></span></label>
+    <p class="dl-note">It goes to the Trash on your Mac, so you can put it back.</p>
+    <div class="dl-acts"><button type="submit" value="cancel" class="ui-btn" autofocus>Keep it</button><button type="submit" value="ok" class="ui-btn dl-ok">Move to Trash</button></div>
+  </form>
+</dialog>
 <div id="toast" role="status" aria-live="polite"></div>
 <script src="/ui/app.js"></script>
 </body>

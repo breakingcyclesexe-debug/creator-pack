@@ -8,7 +8,7 @@ Safety rules (spec acceptance criterion 4):
 import json, mimetypes, os, re, shutil, threading, time, traceback
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote
-from . import project as prj, pipeline, jobs, setup_check, qa, licence
+from . import project as prj, pipeline, jobs, setup_check, qa, licence, listener
 from .platform import get as platform
 
 P = platform()
@@ -18,6 +18,8 @@ VIDEO_EXT = {'.mov', '.mp4', '.m4v', '.mkv', '.avi', '.mts', '.webm'}
 MAX_JSON = 1 << 20
 PACK_ROOT = os.path.dirname(UI)
 PACK_INFO = {'root': PACK_ROOT, 'version': (prj.read_json(os.path.join(PACK_ROOT, '.claude-plugin', 'plugin.json'), {}) or {}).get('version', '')}
+AUTO_LISTEN = False   # serve() turns it on: start Claude by itself when a job waits (tests drive Handler without it)
+SEEN = {'page': 0.0}   # when the open page last asked for /api/state (cpack start opens a browser only if none did lately)
 WAITLIST_URL = os.environ.get('CPACK_WAITLIST_URL', 'https://breakingcycles.life/creator-pack#story-studio')   # Story Studio "I want this"
 
 
@@ -70,6 +72,7 @@ def project_view(pid):
         v['sections'] = sections(pid, v['v'], labels, [b for b in (pj['storyboard'] or {}).get('beats', []) if b.get('keep', True)])
         if isinstance(v.get('qa'), dict) and 'items' in v['qa']: v['qa'] = dict(v['qa'], items=qa.surface(v['qa']['items']))
         v['captions_stale'] = pipeline.stale_captions(pj, v)
+        v['disk'] = prj.size_of(os.path.join(prj.folder(pid), f"v{v['v']}"))   # what deleting it frees on this Mac
     pj['fixes'] = pj.pop('caption_fixes', None) or {}
     pj['unheard'] = pipeline.unheard(pid, pj)   # clips nobody has listened to yet
     pj['title'] = next((x['title'] for x in prj.listing() if x['id'] == pid), None) or prj.title_of(pj, pj['storyboard'])   # with its "(2)" if the name is taken
@@ -95,6 +98,20 @@ def interest(body):
         prj.update(pid, lambda pj: pj['settings'].setdefault('interest', {}).update({what: time.time()}))
     P.open_url(WAITLIST_URL)
     return {'ok': True, 'url': WAITLIST_URL}
+
+
+MAX_PICTURE = 200 << 20
+
+
+def _read_to(rfile, n, path):
+    """n bytes of the request body into path; False when the body was cut short."""
+    with open(path, 'wb') as f:
+        left = n
+        while left > 0:
+            chunk = rfile.read(min(1 << 20, left))
+            if not chunk: break
+            f.write(chunk); left -= len(chunk)
+    return left == 0
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -178,7 +195,12 @@ class Handler(BaseHTTPRequestHandler):
                 f = os.path.join(UI, path[4:])
                 return self._file(f) if inside(UI, f) else self._err(404, 'not found')
             if path == '/api/state':
-                return self._json({'setup': setup_check.detect(), 'connected': jobs.connected(prj.jobs_dir()),
+                if not self.headers.get('X-CPack-Probe'): SEEN['page'] = time.time()
+                try: prj.tidy_empty(keep=parse_qs(u.query).get('open', [None])[0])   # empty "New video" leftovers go by themselves
+                except OSError: pass
+                lis = listener.state()
+                return self._json({'setup': setup_check.detect(), 'connected': lis['state'] == 'connected', 'listener': lis,
+                                   'page_seen': round(time.time() - SEEN['page'], 1) if SEEN['page'] else None,
                                    'projects': prj.listing(), 'home': prj.home(), 'exports': prj.exports_dir(), 'prefs': prj.prefs(),
                                    'pack': PACK_INFO})
             m = re.fullmatch(r'/api/project/([a-z0-9-]+)/captions/(\d+)', path)
@@ -199,6 +221,11 @@ class Handler(BaseHTTPRequestHandler):
                     f = pipeline.version_frame(pid, int(name))
                 if not inside(prj.folder(pid), f): return self._err(404, 'not found')
                 return self._file(f, 'image/jpeg')
+            m = re.fullmatch(r'/media/([a-z0-9-]+)/backdrop/([^/]+)', path)
+            if m:   # the image fit's own picture, for the Footage thumbnail and the Story and Look backgrounds
+                pid, name = m.groups(); pj = prj.load(pid); f = prj.backdrop_image(pj)
+                if not f or os.path.basename(f) != name or not inside(prj.folder(pid), f): return self._err(404, 'not found')
+                return self._file(f)
             m = re.fullmatch(r'/media/([a-z0-9-]+)/(frame|proxy|video)/(.+)', path)
             if m:
                 pid, kind, name = m.groups()
@@ -225,12 +252,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(interest(self._body()))
             if path == '/api/project/new':
                 return self._json(prj.new_or_empty())
+            if path == '/api/listener':   # Connect Claude / stop it
+                act = self._body().get('action')
+                if act == 'start': return self._json(listener.start())
+                if act == 'stop': return self._json(listener.stop())
+                return self._err(400, 'start or stop')
             if path == '/api/prefs':
                 return self._json(prj.save_prefs(self._body()))
             m = re.fullmatch(r'/api/project/([a-z0-9-]+)/(\w+)', path)
             if not m: return self._err(404, 'not found')
             pid, act = m.groups(); prj.load(pid)
             if act == 'upload': return self._upload(pid, parse_qs(u.query).get('name', [''])[0])
+            if act == 'backdrop': return self._backdrop(pid, parse_qs(u.query).get('name', [''])[0])
             body = self._body()
             if act == 'pick':
                 paths = P.pick_files()
@@ -259,6 +292,11 @@ class Handler(BaseHTTPRequestHandler):
                 pipeline.use_story_version(pid, int(body.get('n', 0))); return self._json({'ok': True})
             if act == 'dismiss_back':
                 prj.update(pid, lambda pj: pj.update(offer_back=None)); return self._json({'ok': True})
+            if act == 'trash':   # the whole video to the Mac's Trash; its footage and exports folder only when asked
+                moved = prj.trash_project(pid, with_folder=bool(body.get('folder')))
+                return self._json(dict(moved, projects=prj.listing()))
+            if act == 'trash_version':
+                return self._json({'versions': prj.trash_version(pid, body.get('v'), body.get('shown'))})
             if act == 'rename':
                 prj.rename(pid, body.get('title')); return self._json({'projects': prj.listing()})
             if act == 'settings':
@@ -280,6 +318,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not text: return self._err(400, 'Say what should change')
                 prj.add_chat(pid, 'you', text, part=body.get('part'))
                 j = jobs.new(prj.jobs_dir(), act, pid, text, part=body.get('part'))
+                if AUTO_LISTEN: threading.Thread(target=listener.auto_start, daemon=True).start()
                 return self._json({'job': j['id']})
             if act == 'fix_word':
                 # a caption word put right: saved for this video, then the captions of the version on screen are drawn again
@@ -325,8 +364,39 @@ class Handler(BaseHTTPRequestHandler):
         added, errors = pipeline.add_takes(pid, [dst])
         return self._json({'added': added, 'errors': errors, 'relisten': pipeline.footage_changed(pid) if added else None})
 
+    def _backdrop(self, pid, name):
+        """A picture dropped on, or chosen for, the picture background row: copied into the project (backdrop/), heic
+        made jpg, and set as the image fit's background."""
+        name = os.path.basename(name or '')
+        if not name or os.path.splitext(name)[1].lower() not in prj.PICTURE_EXT: return self._err(400, 'Choose a picture: jpg, png, heic or webp')
+        n = int(self.headers.get('Content-Length') or 0)
+        if not n: return self._err(400, 'That picture is empty')
+        if n > MAX_PICTURE: return self._err(400, 'That picture is too big')
+        d = os.path.join(prj.folder(pid), 'backdrop'); os.makedirs(d, exist_ok=True)
+        tmp = os.path.join(d, f'.in-{os.getpid()}-{threading.get_ident()}{os.path.splitext(name)[1].lower()}')
+        try:
+            if not _read_to(self.rfile, n, tmp): return self._err(400, 'upload cut short')
+            s = prj.set_backdrop_image(pid, tmp, name)
+        finally:
+            if os.path.exists(tmp): os.remove(tmp)
+        return self._json({'settings': s, 'image': s['backdrop']['image']})
+
+
+def watch(every=8):
+    """Keeps the listener honest while the server runs: notices one that died (and requeues its jobs at once), stops one
+    idle far too long, and starts one when a job waits with nobody listening."""
+    while True:
+        try:
+            listener.check()
+            if AUTO_LISTEN: listener.auto_start()
+        except Exception: traceback.print_exc()
+        time.sleep(every)
+
 
 def serve(port=8765, open_browser=False):
+    global AUTO_LISTEN
+    AUTO_LISTEN = not os.environ.get('CPACK_NO_LISTENER')
+    threading.Thread(target=watch, daemon=True).start()
     for p in range(port, port + 20):
         try:
             httpd = ThreadingHTTPServer(('127.0.0.1', p), Handler); break

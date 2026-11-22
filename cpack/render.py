@@ -143,9 +143,10 @@ def recaption(rep, folder, words, fixes=None, script=None):
         if os.path.isdir(d):
             import shutil; shutil.rmtree(d)
         cap_list, _, cap_y = captions.write_track(evs, W, H, cap, caption_font(show, script, captions.look_of(cap)), d, total,
-                                                  fps=rep.get('fps') or 30, band=band)
+                                                  fps=rep.get('fps') or 30, band=band, title_end=(ttl or {}).get('e', 0.0))
     title = ttl and titles.write_track(ttl, W, H, titles.font_for(ttl['style'], ttl['words'], script), os.path.join(folder, 'title'), total,
-                                       rep.get('fps') or 30, band=band)
+                                       rep.get('fps') or 30, band=band,
+                                       reserve=captions.top_reserve(evs, W, H, cap, band))
     final(seg, cap_list, cap_y, W, H, fps_r, total, 0, os.path.join(folder, 'video.mp4'), kb=rep.get('kbps'), title=title)
     if evs:
         import shutil
@@ -172,7 +173,7 @@ def segment_cmd(src, c, probe, turn, W, H, fit, out, fps_r, focus=None, zm=(1.0,
     and without start_time=0 the clip's picture began one frame late (start_time 0.033) while its sound began at 0.
     The frame count is cut in the filter, not with -frames:v: ffmpeg 8 closes the whole file when the picture
     reaches -frames:v, which cut the padded sound short (7 of a tester's 23 clips were 5-30 ms short of their picture).
-    backdrop: the image fit's still (a W x H picture, make_backdrop), a second input laid under the picture. Both
+    backdrop: the image fit's background (the buyer's picture or a still, W x H, make_backdrop), a second input laid under the picture. Both
     are put on the same frame clock before they meet, so the overlay is frame for frame and the timing is unchanged."""
     sw, sh = shape.turned_wh(probe['shown_w'], probe['shown_h'], turn)
     pre = (shape.turn_filter(turn) + ',') if shape.turn_filter(turn) else ''
@@ -230,17 +231,34 @@ def backdrop_spot(pj, clips):
 
 
 def make_backdrop(pj, clips, W, H, folder):
-    """The image fit's backdrop: one still from the video, scaled to fill W x H, darkened, soft vignette. No blur.
-    Returns its path, or None when the frame can't be read (the clips then go on black)."""
-    from PIL import Image
-    take, t = backdrop_spot(pj, clips)
-    tk = next(x for x in pj['takes'] if x['name'] == take)
-    raw = os.path.join(folder, 'backdrop-frame.png'); out = os.path.join(folder, 'backdrop.png')
-    vf = ','.join(x for x in [shape.turn_filter(int(tk.get('turn', 0)) % 360), media.sdr(tk.get('probe'))] if x)
-    subprocess.run([media.ff('ffmpeg'), '-v', 'error', '-y', '-ss', f'{max(0.0, t):.3f}', '-i', tk['path'], '-frames:v', '1']
-                   + (['-vf', vf] if vf else []) + [raw], capture_output=True)
-    if not os.path.exists(raw): return None
-    im = Image.open(raw).convert('RGB')
+    """The image fit's backdrop: the buyer's own picture (settings.backdrop.image, kept in the project's backdrop/
+    folder) if there is one, else one still from the video. Scaled to fill W x H, darkened, soft vignette. No blur.
+    Returns its path, or None when neither can be read (the clips then go on black)."""
+    from PIL import Image, ImageOps
+    from . import project as prj
+    own = prj.backdrop_image(pj)
+    im = None
+    if own:
+        try:
+            with Image.open(own) as f: im = ImageOps.exif_transpose(f).convert('RGB')   # a phone photo stands the way it was taken
+        except Exception: im = None
+    if im is None:
+        take, t = backdrop_spot(pj, clips)
+        tk = next(x for x in pj['takes'] if x['name'] == take)
+        raw = os.path.join(folder, 'backdrop-frame.png')
+        vf = ','.join(x for x in [shape.turn_filter(int(tk.get('turn', 0)) % 360), media.sdr(tk.get('probe'))] if x)
+        subprocess.run([media.ff('ffmpeg'), '-v', 'error', '-y', '-ss', f'{max(0.0, t):.3f}', '-i', tk['path'], '-frames:v', '1']
+                       + (['-vf', vf] if vf else []) + [raw], capture_output=True)
+        if not os.path.exists(raw): return None
+        im = Image.open(raw).convert('RGB')
+    out = os.path.join(folder, 'backdrop.png')
+    grade_backdrop(im, W, H).save(out)
+    return out
+
+
+def grade_backdrop(im, W, H):
+    """Scale to fill W x H (centre crop), DARKEN, then the vignette: the same look for a still and a picture."""
+    from PIL import Image, ImageChops
     k = max(W / im.width, H / im.height)
     im = im.resize((max(W, round(im.width * k)), max(H, round(im.height * k))), Image.LANCZOS)
     x, y = (im.width - W) // 2, (im.height - H) // 2
@@ -254,10 +272,7 @@ def make_backdrop(pj, clips, W, H, folder):
             r = min(1.0, (((i + 0.5) / 32 - 1) ** 2 + ((j + 0.5) / 32 - 1) ** 2) ** 0.5 / 2 ** 0.5)
             px[i, j] = int(255 * (1 - VIGNETTE * r * r))
     mask = small.resize((W, H), Image.BICUBIC)
-    from PIL import ImageChops
-    im = ImageChops.multiply(im, Image.merge('RGB', [mask] * 3))
-    im.save(out)
-    return out
+    return ImageChops.multiply(im, Image.merge('RGB', [mask] * 3))
 
 
 def picture_boxes(pj, clips, W, H):
@@ -380,9 +395,11 @@ def run(pj, sb, transcript, energy_of, folder, progress=lambda *a: None, hear_sp
     cap_list, cap_y, cap_h = (None, 0, 0)
     if evs:
         cap_list, cap_h, cap_y = captions.write_track(evs, W, H, cap, caption_font(show, script, captions.look_of(cap)),
-                                                      os.path.join(folder, 'captions'), total, fps=p['fps'] or 30, band=band)
+                                                      os.path.join(folder, 'captions'), total, fps=p['fps'] or 30, band=band,
+                                                      title_end=(ttl or {}).get('e', 0.0))
     title = ttl and titles.write_track(ttl, W, H, titles.font_for(ttl['style'], ttl['words'], script), os.path.join(folder, 'title'), total,
-                                       p['fps'] or 30, band=band)
+                                       p['fps'] or 30, band=band,
+                                       reserve=captions.top_reserve(evs, W, H, cap, band))
     T['captions'] = round(time.time() - t, 1)
     t = time.time(); progress('final', 0, 'Joining, sound levels, captions')
     out = os.path.join(folder, 'video.mp4')

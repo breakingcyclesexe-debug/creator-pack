@@ -364,13 +364,18 @@ def edit_story(pid, edits):
     return sb
 
 
+def next_version(pj):
+    """The next version's number. An old version may have gone to the Trash: a number is never used twice."""
+    return max([int(x['v']) for x in pj.get('versions') or []] or [0]) + 1
+
+
 def cut(pid, note=''):
     if _busy.get(pid): raise RuntimeError('a cut is already running')
     _busy[pid] = True
     try:
         pj = prj.load(pid); sb = load_story(pid)
         if not sb: raise RuntimeError('no storyboard yet')
-        v = len(pj['versions']) + 1
+        v = next_version(pj)
         folder = os.path.join(prj.folder(pid), f'v{v}')
         prj.update(pid, lambda pj: pj.update(stage='cutting', errors=[]))
         tr, _ = transcript_takes(pid)

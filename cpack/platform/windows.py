@@ -6,6 +6,7 @@
   VIDEO_ENCODER   h264_nvenc if NVIDIA, else libx264; HWACCEL ['-hwaccel', 'auto']
   pick_files      PowerShell System.Windows.Forms.OpenFileDialog
   reveal          explorer /select,
+  trash           the Recycle Bin (Shell.Application ... InvokeVerb('delete'))
   FONTS           C:\\Windows\\Fonts\\arialbd.ttf
 Tested on a real Windows PC with an NVIDIA card before it ships (CT-128)."""
 NAME = 'windows'
@@ -15,4 +16,4 @@ def _todo(*_a, **_k):
     raise NotImplementedError('The creator pack runs on a Mac for now. Windows comes in a later version.')
 
 
-data_home = tool = whisper_model = whisper_device = font = font_heavy = font_cjk = han = install_steps = pick_files = reveal = open_url = _todo
+data_home = tool = whisper_model = whisper_device = font = font_heavy = font_cjk = han = install_steps = pick_files = reveal = open_url = trash = _todo

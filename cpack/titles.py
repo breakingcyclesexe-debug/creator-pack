@@ -309,22 +309,24 @@ def rows(plan, fps):
     return [(k, d) for (k, _), d in zip(out, secs)]
 
 
-def band_area(W, H, band):
+def band_area(W, H, band, reserve=0):
     """(top, bottom) pixels for the title in the empty band above a black / image fit picture: from the safe top
-    to a little above the picture's top edge. None when there is no band or it is too thin to hold a title."""
+    to a little above the picture's top edge, less reserve pixels kept for top captions just above the picture
+    (captions.top_reserve; dropped when the band can't hold both). None when there is no band or it is too thin."""
     if not band: return None
     top = safe_box(W, H)[1]
-    bottom = band[0] - H * 0.02
+    if reserve and not captions.title_room(W, H, band, reserve): reserve = 0
+    bottom = band[0] - H * 0.02 - reserve
     return (top, bottom) if bottom - top >= H * 0.06 else None
 
 
-def write_track(plan, W, H, font_path, folder, total, fps=30, band=None):
+def write_track(plan, W, H, font_path, folder, total, fps=30, band=None, reserve=0):
     """PNG pictures of the title band (the top of the frame) + an ffmpeg concat list covering 0..total on the 1 ms
     clock. Returns (list path, y of the band: always 0). band: shape.bands, the title goes in the one above."""
     from PIL import Image
     os.makedirs(folder, exist_ok=True)
     BH = band_height(H)
-    tiles, low, size = word_tiles(plan, W, H, font_path, band_area(W, H, band))
+    tiles, low, size = word_tiles(plan, W, H, font_path, band_area(W, H, band, reserve))
     mask = shade(W, BH, low, H)
     blank = os.path.join(folder, 'blank.png'); Image.new('RGBA', (W, BH), (0, 0, 0, 0)).save(blank)
     files, written_rows = {}, []

@@ -65,7 +65,7 @@ Everything runs on your Mac and your footage never leaves it. The cutting uses n
 ## Coming after that
 
 - Motion graphics, punch-in zooms and titles
-- Fine-tune in DaVinci Resolve or Instagram Edits
+- Fine-tune in DaVinci Resolve
 - Story Studio, for ideas, story options and a script before you film
 
 ## How long it takes

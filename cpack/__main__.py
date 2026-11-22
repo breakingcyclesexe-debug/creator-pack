@@ -1,6 +1,6 @@
 """cpack: the pack's commands. The skill runs these; tinkerers can too.
 
-  cpack start [--no-open] [--port N]  start the page (if it isn't running) and open it in the browser
+  cpack start [--no-open] [--port N]  start the page (if it isn't running) and open it, unless it is already open
   cpack stop                       stop the page (videos and jobs stay)
   cpack serve [--port N]           run the page's server in this terminal
 
@@ -13,6 +13,8 @@
   cpack storyboard save PID FILE   check a storyboard against the transcript and save it
   cpack turn PID CLIP DEG           turn one clip (0, 90, 180, 270), e.g. cpack turn 20261122-ab12cd IMG_1.MOV 90
   cpack settings PID JSON          change settings, e.g. '{"cut": {"breath": "relaxed"}}'
+  cpack backdrop PID PICTURE       use a picture (jpg, png, heic, webp) behind the video for the picture background fit;
+                                   it is copied into the project. cpack backdrop PID --frame goes back to a still of the video
   cpack render PID [--note T]      cut a new version (same as the page's Go)
   cpack say PID TEXT               post a reply in the project's chat
 """
@@ -38,7 +40,8 @@ def running():
     """The page this data home is using right now: (url, its /api/state), or (None, None)."""
     try:
         with open(os.path.join(prj.home(), 'server.url')) as f: url = f.read().strip()
-        with urllib.request.urlopen(url + 'api/state', timeout=5) as r:
+        req = urllib.request.Request(url + 'api/state', headers={'X-CPack-Probe': '1'})   # a probe, not the page: page_seen stays
+        with urllib.request.urlopen(req, timeout=5) as r:
             if r.status == 200: return url, json.load(r)
     except Exception: pass
     return None, None
@@ -69,8 +72,22 @@ def log_tail(n=6):
     except OSError: return ''
 
 
+PAGE_FRESH = 20   # a page that asked for /api/state this recently is open in a browser: don't open another
+
+
+def should_open(was_running, state, asked=True):
+    """Open the browser only when asked, not told otherwise (CPACK_NO_OPEN: listeners, restarts), and no page is open:
+    the server wasn't running, or no page has polled it in the last PAGE_FRESH seconds (a tester, 22 Nov: it "just randomly
+    opens in a browser" on every /creator-pack and restart)."""
+    if not asked or os.environ.get('CPACK_NO_OPEN'): return False
+    if not was_running: return True
+    seen = (state or {}).get('page_seen')
+    return seen is None or seen > PAGE_FRESH
+
+
 def start(open_browser=True, port=None):
     url, state = running()
+    was_running = bool(url)
     if url:
         note = other_copy(state)
         if note: print(note)
@@ -91,8 +108,9 @@ def start(open_browser=True, port=None):
         wanted = port or port_wanted()
         if not url.rstrip('/').endswith(f':{wanted}'):
             print(f'Port {wanted} is taken by another program, so the page uses {url} instead.')
-    if open_browser:
+    if should_open(was_running, state, open_browser):
         from .platform import get; get().open_url(url)
+    elif was_running and open_browser and not os.environ.get('CPACK_NO_OPEN'): print('The page is already open in your browser.')
     print(url)
 
 
@@ -144,8 +162,20 @@ def main(a):
         print('ready' if d['ready'] else 'not ready: open the page, tick what is missing and press Install')
     elif cmd == 'jobs' and a[1:2] == ['next']:
         w = min(540.0, float(_arg(a, '--wait', 0)))
-        j = jobs.take(prj.jobs_dir(), wait=w)
-        if not j: print(json.dumps({'none': True, 'hint': 'no job yet; run `cpack jobs next --wait 540` again'})); return
+        lid = os.environ.get('CPACK_LISTENER')
+        keep = None
+        if lid:   # the page's headless listener: stop waiting the moment the page no longer counts it as alive
+            from . import listener
+            keep = lambda: listener.info().get('id') == lid
+        j = jobs.take(prj.jobs_dir(), wait=w, keep=keep)
+        if not j and lid and not keep():
+            print(json.dumps({'none': True, 'stop': True, 'hint': 'the page stopped this listener: stop now'})); return
+        if not j and os.environ.get('CPACK_LISTENER'):   # the page's headless listener: stop after a long quiet spell
+            from . import listener
+            quiet = time.time() - max(float(os.environ.get('CPACK_LISTENER_START') or 0), jobs.last_activity(prj.jobs_dir()))
+            if quiet > listener.IDLE:
+                print(json.dumps({'none': True, 'stop': True, 'hint': 'no jobs for a long time: stop now; the page starts you again when it needs you'})); return
+        if not j: print(json.dumps({'none': True, 'hint': 'no job yet; run `cpack jobs next` again with the same --wait'})); return
         j['what_to_do'] = GUIDE[j['type']].format(p=j['project'], j=j['id'])
         print(json.dumps(j, indent=1))
     elif cmd == 'jobs' and a[1:2] == ['done']:
@@ -172,6 +202,15 @@ def main(a):
     elif cmd == 'settings':
         pj = prj.update(a[1], lambda pj: pj.update(settings=prj.merge_settings(pj['settings'], json.loads(a[2]))))
         print(json.dumps(pj['settings'], indent=1))
+    elif cmd == 'backdrop':   # cpack backdrop PID PICTURE | --frame
+        if len(a) < 3: print(__doc__); sys.exit(2)
+        if a[2] == '--frame':
+            pj = prj.update(a[1], lambda pj: pj.update(settings=prj.merge_settings(pj['settings'], {'backdrop': {'image': ''}})))
+            s = pj['settings']
+        else:
+            try: s = prj.set_backdrop_image(a[1], os.path.expanduser(a[2].strip().strip('\'"')))
+            except ValueError as e: sys.exit(str(e))
+        print(json.dumps({'fit': s['fit'], 'backdrop': s['backdrop']}))
     elif cmd == 'render':
         rec = pipeline.cut(a[1], _arg(a, '--note', ''))
         q = rec['qa']

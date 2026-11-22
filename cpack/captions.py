@@ -19,8 +19,13 @@ BREAK_GAP = 0.45
 END = re.compile(r'[.?!]["\')]*$')
 
 
+DASHES = re.compile(r'^[\s\-\u2013\u2014]+|[\s\-\u2013\u2014]+$')
+
+
 def _clean(w):
-    return w.strip()
+    """A word as shown: no spaces, and no dash the listener adds to a cut-off word ("that-"), which reads as an
+    odd dash on screen (a tester, 22 Nov). Hyphens inside a word ("off-grid") stay."""
+    return DASHES.sub('', w)
 
 
 CJK = re.compile(r'[\u3400-\u9fff\uf900-\ufaff]')
@@ -97,7 +102,7 @@ def srt(words, per_line=4, max_lines=2):
     for n, ch in enumerate(groups, 1):
         e = ch[-1]['e']
         if n < len(groups): e = min(e + 0.25, groups[n][0]['s'])
-        text = '\n'.join(' '.join(w['w'].strip() for w in l) for l in lines_of(ch, 'lines', per_line))
+        text = '\n'.join(' '.join(c for c in (_clean(w['w']) for w in l) if c) for l in lines_of(ch, 'lines', per_line))
         out.append(f'{n}\n{ts(ch[0]["s"])} --> {ts(max(e, ch[0]["s"] + 0.1))}\n{text}\n')
     return '\n'.join(out)
 
@@ -415,16 +420,82 @@ def band_y(evs, W, H, cfg, band):
     return top + gap + need / 2
 
 
-def write_track(evs, W, H, cfg, font_path, folder, total, fps=30, seed=None, band=None):
+def title_clear(evs, spots, W, H, cfg, band, title_end):
+    """Captions chosen for the top share the top with the hook on screen: while the title is up, they move under it
+    (the band under a black / image fit picture, else the bottom), so the two never sit on each other (a tester, 22 Nov:
+    on his picture background project the hook "didn't show": the top captions sat over it)."""
+    if not title_end: return spots
+    low = ('center', band_y(evs, W, H, cfg, band) / H) if band else ('center', POS['bottom'])
+    return [low if sp[1] < 0.4 and ev['s'] < title_end else sp for ev, sp in zip(evs, spots)]
+
+
+def _need(evs, W, cfg):
+    """(height of the caption's lines, the air round them) in pixels."""
+    size = font_size(W, cfg)
+    lines = max([1] + [len(e['lines']) for e in evs]) if cfg.get('style', 'three') != 'word' else 1
+    return size * 1.18 * lines, size * 0.45
+
+
+def safe_top(W, H):
+    return H * (0.075 if upright(W, H) else 0.07)
+
+
+def top_band_y(evs, W, H, cfg, band, title=False):
+    """Centre y (pixels) of top captions in the band above a black / image fit picture: centred between the safe
+    top and the picture's top edge, or just above the picture's edge when the band is too small or the hook title
+    is up (the title then keeps the band above them, titles.band_area with top_reserve)."""
+    need, gap = _need(evs, W, cfg)
+    top, edge = safe_top(W, H), band[0]
+    if not title and edge - top >= need + 2 * gap: return (top + edge) / 2
+    return edge - gap - need / 2
+
+
+def top_reserve(evs, W, H, cfg, band):
+    """Pixels the hook title leaves free above the picture for top captions (0 when they are not at the top)."""
+    if not band or not evs or cfg.get('position') != 'top': return 0
+    need, gap = _need(evs, W, cfg)
+    return need + 2 * gap
+
+
+def title_room(W, H, band, reserve):
+    """True when the band above the picture holds the hook title and the top captions under it (titles.band_area)."""
+    return band[0] - H * 0.02 - reserve - safe_top(W, H) >= H * 0.06
+
+
+def on_picture_y(evs, W, H, cfg, band):
+    """Centre y (pixels) of middle captions on a black / image fit picture: the lower third of the picture,
+    kept inside it and above Instagram's bottom 12%."""
+    need, gap = _need(evs, W, cfg)
+    y, bottom = band
+    return min(y + (bottom - y) * 5 / 6, bottom - gap - need / 2, H * (1 - IG_BOTTOM) - need / 2)
+
+
+def band_spots(evs, W, H, cfg, band, title_end=0.0):
+    """Where the captions go round a black / image fit picture (22 Nov 2026): top = in the band above (under the
+    hook title, just above the picture, while the title is up), middle = on the picture, lower third, anything
+    else = in the band below. Left, right and moves around are for Fill; here they go below."""
+    pos = cfg.get('position', 'bottom')
+    if pos == 'middle': return [('center', on_picture_y(evs, W, H, cfg, band) / H)] * len(evs)
+    if pos == 'top':
+        high = ('center', top_band_y(evs, W, H, cfg, band) / H)
+        if not title_end: return [high] * len(evs)
+        if title_room(W, H, band, top_reserve(evs, W, H, cfg, band)):
+            under = ('center', top_band_y(evs, W, H, cfg, band, title=True) / H)
+        else: under = ('center', band_y(evs, W, H, cfg, band) / H)   # no room for both: below while the title is up
+        return [under if ev['s'] < title_end else high for ev in evs]
+    return [('center', band_y(evs, W, H, cfg, band) / H)] * len(evs)
+
+
+def write_track(evs, W, H, cfg, font_path, folder, total, fps=30, seed=None, band=None, title_end=0.0):
     """PNG strips + an ffmpeg concat list covering 0..total. Returns (list path, strip height, y offset).
-    band: the empty bands round a black / image fit picture (shape.bands): the captions go centred in the one
-    below it, unless the buyer chose top."""
+    band: the empty bands round a black / image fit picture (shape.bands): the captions go where band_spots says."""
     from PIL import Image
     os.makedirs(folder, exist_ok=True)
     sh0 = strip_height(W, cfg); sh0 += sh0 % 2
     pos = cfg.get('position', 'bottom')
     spots = move_plan(evs, seed) if pos == 'moves' else [fixed_spot(pos)] * len(evs)
-    if band and pos != 'top': spots = [('center', band_y(evs, W, H, cfg, band) / H)] * len(evs)
+    if band: spots = band_spots(evs, W, H, cfg, band, title_end)
+    else: spots = title_clear(evs, spots, W, H, cfg, band, title_end)
     cys = [cy * H for _, cy in spots] or [POS['bottom'] * H]
     y0 = max(0, int(min(cys) - sh0 / 2)); y1 = min(H, int(max(cys) + sh0 / 2))
     sh = y1 - y0; sh -= sh % 2

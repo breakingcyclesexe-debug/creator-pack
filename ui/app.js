@@ -2,6 +2,8 @@
    written as jobs that the buyer's own Claude Code session picks up; this page never talks to Claude.
    Layout (22 Nov 2026, video first): a thin step rail, the buyer's video big in the middle on every step, the
    tools on the right, the chat as one line under the tools that opens over them, never over the video. */
+/* a word as shown: drop the dash the listener adds to a cut-off word ("that-"), keep hyphens inside words */
+const cleanW = w => String(w||'').replace(/^[\s\-\u2013\u2014]+|[\s\-\u2013\u2014]+$/g,'');
 (function(){
   const $ = s => document.querySelector(s);
   const $$ = s => Array.from(document.querySelectorAll(s));
@@ -15,7 +17,6 @@
   const setHTML = (el, html) => { if(el._h===html) return false; el.innerHTML=html; el._h=html; return true; };
   let toastT;
   function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('is-show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('is-show'),4200); }
-  const CC_HELP = 'In the Claude app, open Claude Code and send /creator-pack';
 
   /* ---------- server ---------- */
   async function api(path, body, raw){
@@ -60,7 +61,24 @@
       <ol class="pg-steps">${o.steps.map((s,i)=>`<li class="pg-step${i<o.at?' is-done':i===o.at?' is-now':''}"><span class="pg-d"><span>${i+1}</span>${icon('i-check')}</span><b>${esc(s[0])}</b>${i<o.at?'Done':i===o.at?(o.waiting?'Waiting for you':'Happening now'):esc(s[1]||'Next')}</li>`).join('')}</ol>
       ${o.ccOff ? ccOff(o.ccOff) : ''}</div>`;
   }
-  const ccOff = why => `<div class="ui-ccoff"><b>Claude isn't listening right now</b>${esc(why)} In the Claude app, open Claude Code and send this message. It picks up from here by itself.<div class="ui-cmd"><code>/creator-pack</code><button type="button" class="ui-btn is-sm" data-copy="/creator-pack">Copy</button></div></div>`;
+  /* Claude not listening: the page starts it (Connect Claude); typing /creator-pack in Claude Code stays as a small fallback */
+  const lis = () => (ST && ST.listener) || {state: connected() ? 'connected' : 'off'};
+  let ccStarting = 0;
+  const ccWait = () => lis().state==='connecting' || (lis().state==='off' && Date.now() - ccStarting < 15000 && !lis().problem);
+  function ccOff(why){
+    if(ccWait()) return `<div class="ui-ccoff cc-card is-wait"><b><span class="ui-spin is-sm"></span>Connecting to Claude</b>Claude Code is starting on your Mac. It takes a few seconds.</div>`;
+    const p = lis().problem;
+    return `<div class="ui-ccoff cc-card"><b>Claude isn't listening right now</b>${esc(why||'')}${p ? `<p class="cc-err" role="alert">${esc(p.msg)}</p>` : ''}
+      <div class="cc-row"><button type="button" class="ui-btn is-primary is-sm" data-cc-connect>${p ? 'Try again' : 'Connect Claude'}</button></div>
+      <p class="cc-alt">Or send <code>/creator-pack</code> in Claude Code. <button type="button" class="cc-copy" data-copy="/creator-pack">Copy</button></p></div>`;
+  }
+  async function ccConnect(){
+    ccStarting = Date.now(); if(PJ) renderAll();
+    try { ST.listener = await api('/api/listener', {action:'start'}); } catch(e){ ccStarting = 0; toast(e.message); }
+    if(ST.listener && ST.listener.problem) ccStarting = 0;
+    if(PJ) renderAll();
+  }
+  document.addEventListener('click', e=>{ if(e.target.closest('[data-cc-connect]')) ccConnect(); });
 
   /* ---------- screens ---------- */
   let screenNow = 'setup';
@@ -192,6 +210,8 @@
   const heard = () => PJ && stageAt() >= 2;
   const hasStory = () => PJ && PJ.storyboard;
   const hasCut = () => PJ && PJ.versions && PJ.versions.length > 0;
+  const lastV = p => p && p.versions && p.versions.length ? p.versions[p.versions.length-1].v : 0;   // numbers stay when an old one is deleted
+  const nextV = () => lastV(PJ) + 1;
   const STEPS = [['Footage','i-film'],['Story','i-cards'],['Look','i-aa'],['Finish','i-flag']], PANEL = {1:'#p1', 2:'#p2', 3:'#p3', 4:'#p5'};
   const making = () => PJ && PJ.stage==='cutting';
   const canStep = n => n===1 || (n===2 && PJ && stageAt()>=1) || (n===3 && hasStory()) || (n===4 && (hasCut() || making()));
@@ -247,6 +267,8 @@
     const o = e.target.closest('[data-open]'), r = e.target.closest('[data-rename]');
     if(e.target.closest('.vm-new')){ showVideos(false); newVideo(); return; }
     if(r){ renaming = r.dataset.rename; renderProjects(); const i = vlist.querySelector('form input'); i.focus(); i.select(); return; }
+    const d = e.target.closest('[data-del]');
+    if(d){ e.stopPropagation(); deleteVideo(d.dataset.del); return; }
     if(o){ showVideos(false); if(o.dataset.open!==pid) openProject(o.dataset.open); }
   });
   vlist.addEventListener('submit', async e=>{
@@ -254,10 +276,35 @@
     try { const r = await api(`/api/project/${id}/rename`, {title:t}); ST.projects = r.projects; if(id===pid && PJ) PJ.title = (r.projects.find(p=>p.id===id)||{}).title; } catch(err){ toast(err.message); }
     renaming = ''; renderProjects(); const b = vlist.querySelector(`[data-open="${id}"]`); if(b) b.focus();
   });
+  /* delete: to the Mac's Trash, with one plain confirm that says what goes (dl-) */
+  const gb = b => !b ? '' : b >= 1e9 ? `${(b/1e9).toFixed(1)}\u00a0GB` : b >= 1e6 ? `${Math.round(b/1e6)}\u00a0MB` : 'under 1\u00a0MB';
+  const dl = $('#dl');
+  function askDelete(o){
+    $('#dl-h').textContent = o.title; $('#dl-what').textContent = o.what;
+    $('#dl-also-row').hidden = !o.also; $('#dl-also').checked = false; $('#dl-also-t').textContent = o.also || '';
+    dl.returnValue = ''; dl.onclose = () => { if(dl.returnValue==='ok') o.ok($('#dl-also').checked); };
+    dl.showModal();
+  }
+  function deleteVideo(id){
+    const p = ((ST && ST.projects) || []).find(x=>x.id===id); if(!p) return;
+    const name = p.id===pid && PJ ? PJ.title || p.title : p.title || p.name;
+    const vs = p.versions ? (p.versions===1 ? 'its video' : `all ${p.versions} versions`) : 'its story';
+    showVideos(false);
+    askDelete({title: `Delete "${name}"?`,
+      what: `Moves its working files, ${vs} and the cache to the Trash (${gb(p.size)||'nothing'}).`,
+      also: p.folder_size ? `Also move its folder with your footage and exports (${gb(p.folder_size)})` : '',
+      ok: async also => {
+        try { const r = await api(`/api/project/${id}/trash`, {folder: also}); ST.projects = r.projects; }
+        catch(e){ toast(e.message); return; }
+        toast(also ? 'Moved to the Trash, with its folder.' : 'Moved to the Trash. Its footage folder stays.');
+        if(id===pid){ const next = ST.projects.find(x=>!x.empty); if(next) openProject(next.id); else { PJ = null; newVideo(); } }
+        else renderProjects();
+      }});
+  }
   const thumbOf = p => p.thumb ? `/media/${p.id}/frame/${encodeURIComponent(p.thumb)}` : '';
   function renderProjects(){
     const all = (ST && ST.projects) || [];
-    const list = all.filter(p=>p.id===pid || !p.empty).slice(0,30);
+    const list = all.filter(p=>!p.empty).slice(0,30);   // an empty one is "New video" at the top, never a row
     vmenu.hidden = !(screenNow==='editor' && !!PJ);
     const day = t => t ? new Date(t*1000).toLocaleDateString([], {day:'numeric', month:'short'}) : '';
     const nm = p => p.id===pid && PJ ? PJ.title || p.title : p.title || p.name;
@@ -269,9 +316,9 @@
     setHTML(vlist, `<button type="button" class="vm-new"><span class="vm-pic">${icon('i-plus')}</span><span><b>New video</b><small>Drop in a recording</small></span></button>` + list.map(p=>{
       const full = p.id===pid && PJ && PJ.storyboard ? PJ.storyboard.one_line : p.story;
       if(renaming===p.id) return `<div class="vm-row${p.id===pid?' is-cur':''}"><form><label class="sr" for="vname">Name of this video</label><input type="text" class="ui-in" id="vname" maxlength="60" value="${esc(nm(p))}" autocomplete="off"><button type="submit" class="ui-btn is-navy is-sm">Save</button></form></div>`;
-      const facts = [day(p.created), p.duration ? mmss(p.duration) : '', p.versions ? `version ${p.versions}` : ''].filter(Boolean).join(' · ');
+      const facts = [day(p.created), p.duration ? mmss(p.duration) : '', p.versions ? `version ${p.versions}` : '', gb((p.size||0) + (p.folder_size||0))].filter(Boolean).join(' · ');
       const pic = thumbOf(p);
-      return `<div class="vm-row${p.id===pid?' is-cur':''}"><button type="button" class="vm-open" data-open="${p.id}" title="${esc(full||nm(p))}" ${p.id===pid?'aria-current="true"':''}><span class="vm-pic"${pic?` style="background-image:url('${pic}')"`:''}></span><span><b>${esc(nm(p))}</b><small>${esc(facts)}</small></span>${p.exported?'<span class="vm-st">Exported</span>':''}</button><button type="button" class="ui-ib" data-rename="${p.id}" title="Rename" aria-label="Rename ${esc(nm(p))}">${icon('i-pen')}</button></div>`;
+      return `<div class="vm-row${p.id===pid?' is-cur':''}"><button type="button" class="vm-open" data-open="${p.id}" title="${esc(full||nm(p))}" ${p.id===pid?'aria-current="true"':''}><span class="vm-pic"${pic?` style="background-image:url('${pic}')"`:''}></span><span><b>${esc(nm(p))}</b><small>${esc(facts)}</small></span>${p.exported?'<span class="vm-st">Exported</span>':''}</button><button type="button" class="ui-ib" data-rename="${p.id}" title="Rename" aria-label="Rename ${esc(nm(p))}">${icon('i-pen')}</button><button type="button" class="ui-ib vm-del" data-del="${p.id}" title="Delete" aria-label="Delete ${esc(nm(p))}">${icon('i-trash')}</button></div>`;
     }).join(''));
   }
 
@@ -418,14 +465,14 @@
   }
   const NOT_SETTINGS = ['shape', 'zh', 'ver'];
   $('#panel').addEventListener('change', e=>{
-    const i=e.target; if(NOT_SETTINGS.includes(i.name) || ['fn-srt','sv-pick','chat-in'].includes(i.id) || i.closest('#chat, #ch-dock')) return;
+    const i=e.target; if(NOT_SETTINGS.includes(i.name) || ['fn-srt','sv-pick','chat-in','fit-bg-file'].includes(i.id) || i.closest('#chat, #ch-dock')) return;
     if(i.id==='lang') renderWords();
     if(i.name==='purpose'){ setRadio('format', FMT[i.value]); renderLens(); updateFitQuestion(); }
     if(i.name==='filmed') syncMode();
     if(i.id==='c-popon') $('#c-hi-f').hidden = !i.checked;
     /* the hook on screen follows the caption look while it still matches the look it had (soft, clean, glow to soft) */
     if(i.name==='c-look' && PJ){ const was = TITLE_FOR[PJ.settings.captions.look||'soft']; if(val('title')===was) setRadio('title', TITLE_FOR[i.value]); }
-    if(i.name==='fit') renderFitBg();
+    if(i.name==='fit'){ renderFitBg(); if(PJ){ PJ.settings = Object.assign({}, PJ.settings, {fit: i.value}); renderZoomHint(); } }
     renderGuess();
     /* a Look choice shows on the video straight away, before the server has it */
     if(PJ && i.closest('#p3')){ PJ.settings = Object.assign({}, PJ.settings, formSettings()); renderPreview(); if(raw.paused && (['c-look','c-cpos','cap','c-csize','c-zoom','title'].includes(i.name) || ['c-motion','c-popon'].includes(i.id))) playPart(i.name==='title' || i.name==='c-zoom' ? 0 : selPart); }
@@ -436,19 +483,45 @@
   $('#panel').addEventListener('change', e=>{ if(e.target.name==='zh') savePrefs({chinese:e.target.value}); });
   $('#fn-srt').addEventListener('change', e=>localStorage.setItem('cpack-srt', e.target.checked?'1':'0'));
 
-  /* the picture background fit: which still is behind the video (the middle of the first clip unless picked) */
+  /* the picture background fit: what is behind the video. The buyer's own picture (backdrop.image, kept in the
+     project) wins; else the picked still, else the middle of the first clip (render.make_backdrop) */
+  const ownPic = () => { const im = ((PJ && PJ.settings.backdrop) || {}).image || ''; return im ? im.replace(/^backdrop\//, '') : ''; };
+  function backdropSrc(){
+    if(!PJ) return '';
+    const b = PJ.settings.backdrop || {}, own = ownPic();
+    if(own) return `/media/${pid}/backdrop/${encodeURIComponent(own)}`;
+    const t = takeOf(b.take) || PJ.takes[0];
+    return t ? stillOf(t.name, b.take && b.t >= 0 ? b.t : t.probe.duration/2) : '';
+  }
   function renderFitBg(){
     if(!PJ) return;
     const on = val('fit')==='image' && !!fitAsked(); $('#fit-bg-row').hidden = !on; if(!on) return;
-    const b = PJ.settings.backdrop || {}, t = takeOf(b.take) || PJ.takes[0], at = b.take && b.t >= 0 ? b.t : (t ? t.probe.duration/2 : 0);
-    if(t) $('#fit-bg-pic').style.backgroundImage = `url("${stillOf(t.name, at)}")`;
-    $('#fit-bg-say').textContent = b.take ? `${t ? t.name.replace(/\.[^.]+$/,'') : b.take} at ${mmss(at)}` : 'the middle of your first clip';
+    const b = PJ.settings.backdrop || {}, t = takeOf(b.take) || PJ.takes[0], at = b.take && b.t >= 0 ? b.t : (t ? t.probe.duration/2 : 0), own = ownPic();
+    const src = backdropSrc(); $('#fit-bg-pic').style.backgroundImage = src ? `url("${src}")` : '';
+    $('#fit-bg-say').textContent = own ? `your picture (${own.replace(/\.[^.]+$/,'')})` : b.take ? `${t ? t.name.replace(/\.[^.]+$/,'') : b.take} at ${mmss(at)}` : 'the middle of your first clip';
   }
   $('#fit-bg').addEventListener('click', async ()=>{
     const t = curTake(); if(!t) return;
     const at = raw.src && stageMode()==='footage' ? raw.currentTime : t.probe.duration/2;
-    await saveSettings({backdrop: {take: t.name, t: Math.round(at*10)/10}}); renderFitBg(); toast(`Background set: ${mmss(at)} into ${t.name.replace(/\.[^.]+$/,'')}.`);
+    await saveSettings({backdrop: {take: t.name, t: Math.round(at*10)/10, image: ''}}); renderFitBg(); toast(`Background set: ${mmss(at)} into ${t.name.replace(/\.[^.]+$/,'')}.`);
   });
+  const PIC_EXT = /\.(jpe?g|png|heic|heif|webp)$/i;
+  async function useBackdropPic(f){
+    if(!f) return;
+    if(!PIC_EXT.test(f.name)){ toast('Choose a picture: jpg, png, heic or webp.'); return; }
+    toast(`Adding ${f.name}.`);
+    try {
+      const r = await api(`/api/project/${pid}/backdrop?name=${encodeURIComponent(f.name)}`, f, true);
+      PJ.settings = r.settings; renderAll(); toast('Background set: your picture.');
+    } catch(e){ toast(e.message); }
+  }
+  $('#fit-bg-choose').addEventListener('click', ()=>$('#fit-bg-file').click());
+  $('#fit-bg-file').addEventListener('change', e=>{ const f = e.target.files && e.target.files[0]; e.target.value = ''; useBackdropPic(f); });
+  { const row = $('#fit-bg-row');
+    row.addEventListener('dragover', e=>{ e.preventDefault(); row.classList.add('is-over'); });
+    row.addEventListener('dragleave', ()=>row.classList.remove('is-over'));
+    row.addEventListener('drop', e=>{ e.preventDefault(); e.stopPropagation(); row.classList.remove('is-over'); useBackdropPic(Array.from(e.dataTransfer.files||[]).find(f=>PIC_EXT.test(f.name)) || (e.dataTransfer.files||[])[0]); });
+  }
 
   /* ---------- plan-use heads-up (no money figures; plan limits aren't published as numbers) ---------- */
   function level(k){
@@ -701,6 +774,12 @@
   }
   const player = () => stageMode()==='finish' ? cutPlayer : raw;
   function pauseAll(){ plan && (plan.cont = false); if(!raw.paused) raw.pause(); if(!cutPlayer.paused) cutPlayer.pause(); }
+  /* a video plays only while it is on screen (22 Nov: "sometimes the video will just play in the background"):
+     every play goes through playOn, and a play that starts anyway while the player is hidden is stopped at once */
+  const onScreen = el => screenNow==='editor' && !el.hidden && !document.hidden && el.offsetParent !== null && (el===cutPlayer ? stageMode()==='finish' : stageMode()!=='finish');
+  function playOn(el){ if(onScreen(el)) return el.play().catch(()=>{}); if(!el.paused) el.pause(); return Promise.resolve(); }
+  [raw, cutPlayer].forEach(el => el.addEventListener('play', () => { if(!onScreen(el)){ el.pause(); if(el===raw && plan) plan.cont = false; } }));
+  document.addEventListener('visibilitychange', () => { if(document.hidden) pauseAll(); });
   /* the box keeps the video's own shape and fills what the column has */
   function boxShape(){
     const m = stageMode();
@@ -726,7 +805,7 @@
     const b = k[selPart], u = beatUse(b), src = `/media/${pid}/proxy/${encodeURIComponent(u.take)}`;
     plan = {i:selPart, cont:!!play};
     if(!ready(u.take)){ raw.removeAttribute('src'); raw.poster = partStill(b); raw.load(); if(play) toast('The preview of this clip is still being made. Try again in a minute.'); return; }
-    const seek = () => { raw.currentTime = Math.max(0, u.start - 0.05); if(play) raw.play().catch(()=>{}); placeRaw(); };
+    const at = S.step, seek = () => { raw.currentTime = Math.max(0, u.start - 0.05); if(play && S.step===at) playOn(raw); placeRaw(); };
     if(!raw.src.endsWith(src)){ raw.poster = partStill(b); raw.src = src; raw.addEventListener('loadedmetadata', seek, {once:true}); }
     else seek();
   }
@@ -751,22 +830,38 @@
     placeRaw();
   });
   let rawRaf = 0;
-  function loopRaw(){ cancelAnimationFrame(rawRaf); placeRaw(); if(!raw.paused && !raw.ended) rawRaf = requestAnimationFrame(loopRaw); }
+  /* the Blur fit (setting pad): the same video, or its still while it loads, scaled to fill the frame, blurred and a
+     little darkened, behind the sharp picture centred on top (shape.fit_filter pad). Drawn small, like the render's
+     quarter-size blur, and softened by CSS, every frame while it plays. */
+  const blurCv = $('#st-blur'), blurCx = blurCv.getContext('2d'), blurPic = new Image();
+  function paintBlur(){
+    const on = !blurCv.hidden; if(!on) return;
+    const src = raw.readyState >= 2 ? raw : (raw.poster ? blurPic : null);
+    if(src===blurPic && blurPic.src !== new URL(raw.poster, location.href).href){ blurPic.src = raw.poster; return; }
+    const sw = src===raw ? raw.videoWidth : blurPic.naturalWidth, sh = src===raw ? raw.videoHeight : blurPic.naturalHeight;
+    const W = blurCv.width = Math.max(1, Math.round((box.clientWidth||360)/4)), H = blurCv.height = Math.max(1, Math.round((box.clientHeight||640)/4));
+    if(!src || !sw || !sh){ blurCx.fillStyle = '#000'; blurCx.fillRect(0, 0, W, H); return; }
+    const k = Math.max(W/sw, H/sh), w = sw*k, h = sh*k;
+    try { blurCx.drawImage(src, (W-w)/2, (H-h)/2, w, h); } catch(e){ /* not decodable yet */ }
+  }
+  blurPic.addEventListener('load', paintBlur);
+  ['loadeddata','seeked'].forEach(ev=>raw.addEventListener(ev, paintBlur));
+  function loopRaw(){ cancelAnimationFrame(rawRaf); placeRaw(); paintBlur(); if(!raw.paused && !raw.ended) rawRaf = requestAnimationFrame(loopRaw); }
   function syncPP(){ const p = player(), on = !p.paused && !p.ended; setHTML($('#pp'), icon(on?'i-pause':'i-play')); $('#pp').setAttribute('aria-label', on?'Pause':'Play'); $('#st-big').classList.toggle('is-show', !on); }
   ['play','pause','ended'].forEach(ev=>raw.addEventListener(ev, ()=>{ syncPP(); loopRaw(); }));
   ['seeked','loadedmetadata'].forEach(ev=>raw.addEventListener(ev, placeRaw));
   function togglePlay(){
     const m = stageMode();
-    if(m==='finish'){ if(cutPlayer.paused || cutPlayer.ended){ cutStop = null; cutPlayer.play().catch(()=>{}); } else cutPlayer.pause(); return; }
+    if(m==='finish'){ if(cutPlayer.paused || cutPlayer.ended){ cutStop = null; playOn(cutPlayer); } else cutPlayer.pause(); return; }
     if(!raw.paused){ raw.pause(); if(plan) plan.cont = false; return; }
     if(m==='story' || m==='look'){
       const k = keptBeats(), b = k[selPart]; if(!b) return;
       const u = beatUse(b);
-      if(plan && plan.i===selPart && raw.src && raw.currentTime >= u.start - 0.2 && raw.currentTime < u.end){ plan.cont = true; raw.play().catch(()=>{}); }
+      if(plan && plan.i===selPart && raw.src && raw.currentTime >= u.start - 0.2 && raw.currentTime < u.end){ plan.cont = true; playOn(raw); }
       else playPart(selPart);
       return;
     }
-    if(raw.src) raw.play().catch(()=>{});
+    if(raw.src) playOn(raw);
     else if(curTake()) toast('The preview of this clip is still being made. Try again in a minute.');
   }
   $('#pp').addEventListener('click', togglePlay);
@@ -793,8 +888,15 @@
     /* how a sideways take sits in an upright video, as the video will have it (shape.py) */
     const fit = (m==='story' || m==='look') && fitAsked() ? PJ.settings.fit : 'crop';
     raw.classList.toggle('is-fit', fit!=='crop'); raw.classList.toggle('is-inset', fit==='image');
-    const bd = PJ.settings.backdrop || {}, bt = takeOf(bd.take) || takes[0];
-    box.style.backgroundImage = fit==='image' && bt ? `url("${stillOf(bt.name, bd.take && bd.t >= 0 ? bd.t : bt.probe.duration/2)}")` : '';
+    raw.classList.toggle('is-pad', fit==='pad'); blurCv.hidden = fit!=='pad' || fin;
+    /* picture background: the picked still BEHIND the video, darkened like the render (render.py DARKEN, VIGNETTE);
+       the inset is the video, with that part's own frame under it, so the still never shows through the inset
+       while the video loads or seeks (22 Nov: the picked frame showed where the video should be) */
+    const bsrc = fit==='image' ? backdropSrc() : '';
+    box.style.backgroundImage = bsrc ? `radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,.45) 100%), linear-gradient(rgba(0,0,0,.45), rgba(0,0,0,.45)), url("${bsrc}")` : '';
+    const ib = fit==='image' && (m==='story' || m==='look') ? keptBeats()[selPart] : null;
+    raw.style.backgroundImage = ib ? `url("${partStill(ib)}")` : '';
+    if(ib && raw.poster.indexOf('/frame/') >= 0) raw.poster = partStill(ib);
     const k = keptBeats(), total = k.reduce((a,b)=>{const u=beatUse(b);return a+(u.end-u.start);},0);
     let l = '', r = '';
     if(m==='footage' || m==='working'){ const t = curTake(); l = t ? `<b>${esc(t.name.replace(/\.[^.]+$/,''))}</b> · as you filmed it` : '<b>Your video</b> · shows up here'; r = t ? (m==='working' ? (PJ.stage==='hearing' ? 'listening' : 'finding the story') : `${mmss(t.probe.duration)} raw`) : ''; }
@@ -806,7 +908,7 @@
     if(m==='footage' || m==='working') loadTake();
     if(m==='making'){ const b = k[0]; raw.removeAttribute('src'); raw.poster = b ? partStill(b) : (takes[0] ? frameSrc(takes[0]) : ''); }
     $('#pp').disabled = empty || m==='making';
-    fitStage();
+    fitStage(); paintBlur();
     /* the picture background fit: the whole picture at 92 % of the frame with a thin white line, on the still (shape.py) */
     if(fit==='image'){
       const b = k[selPart], tk = (b && takeOf(beatUse(b).take)) || takes[0], [sw, sh] = tk ? shownWH(tk) : [9,16];
@@ -844,7 +946,7 @@
     const u = beatUse(b), on = plan && plan.i===selPart && raw.src && t >= u.start - 0.3 && t <= u.end + 0.3;
     const inPart = on ? Math.min(u.end-u.start, Math.max(0, t-u.start)) : 0;
     /* punch-in zooms (zoom.py), on Look: the framing changes at each join; push adds a slow push on the hook */
-    const z = m==='look' ? (PJ.settings.captions.zoom || 'punch') : 'off';
+    const z = m==='look' && !zoomBlockedBy() ? (PJ.settings.captions.zoom || 'punch') : 'off';
     const sc = z==='off' ? 1 : selPart===0 ? (z==='push' ? 1 + 0.06*inPart/Math.max(.1,u.end-u.start) : 1) : selPart%2 ? 1.15 : 1;
     raw.style.transform = sc===1 ? '' : `scale(${sc.toFixed(3)})`; raw.style.transformOrigin = '50% 40%';
     $$('#track .tl-seg').forEach((el,i)=>{ el.querySelector('.tl-fill').style.width = i<selPart ? '100%' : i===selPart ? (100*inPart/Math.max(.1,u.end-u.start)).toFixed(1)+'%' : '0%'; el.classList.toggle('is-sel', i===selPart); });
@@ -859,7 +961,7 @@
     const li = Math.max(0, lines.findIndex(l=>l[l.length-1].i >= wi)), line = lines[li] || [];
     said.classList.remove('is-can');
     const key = `${b.id}:${b.use_alt}:${ws.length}:${li}`;
-    if(said._k !== key){ said._k = key; said._h = null; setHTML(said, line.map(x=>`<span class="st-w" data-i="${x.i}">${esc(x.w.w)}</span>`).join(' ')); }
+    if(said._k !== key){ said._k = key; said._h = null; setHTML(said, line.map(x=>`<span class="st-w" data-i="${x.i}">${esc(cleanW(x.w.w))}</span>`).join(' ')); }
     said.querySelectorAll('.st-w').forEach(x=>x.classList.toggle('is-on', +x.dataset.i===wi));
     if(m==='look') paintCap(false);
   }
@@ -879,10 +981,18 @@
     const c = PJ.settings.captions, none = c.style==='none';
     const k = keptBeats(), hook = k[0], pic = hook ? partStill(hook) : (PJ.takes[0] ? frameSrc(PJ.takes[0]) : '');
     const sample = hook ? capChunks(partWords(hook), 'lines', 2)[0] : null;
-    const said = sample ? sample.map(w=>w.w).join(' ') : 'what am I doing with my life?';
+    const said = sample ? sample.map(w=>cleanW(w.w)).join(' ') : 'what am I doing with my life?';
     $$('#p3 .lk-ph').forEach(p=>{ p.style.backgroundImage = pic ? `url("${pic}")` : ''; });
     $$('#p3 .lk-txt').forEach(p=>{ if(p.textContent!==said) p.textContent = said; });
     $$('#p3 .lk-mini').forEach(p=>{ p.style.backgroundImage = pic ? `url("${pic}")` : ''; });
+    /* sideways video on black bars or a picture background: Top / On the video / Bottom only (captions.band_spots) */
+    const banded = fitAsked()==='sideways' && ['black','image'].includes(PJ.settings.fit);
+    $('#cap-more .lk-where').classList.toggle('is-banded', banded);
+    $('#cap-more .lk-say-m').textContent = banded ? 'On the video' : 'Middle';
+    $('#hp-where').dataset.help = banded ? 'where-band' : 'where';
+    $$('#p3 .lk-pic').forEach(p=>{ p.style.backgroundImage = pic ? `url("${pic}")` : ''; });
+    $$('#p3 .lk-where .lk-mini').forEach(p=>{ p.style.backgroundImage = banded ? 'none' : (pic ? `url("${pic}")` : ''); });
+    if(banded && ['left','right','moves'].includes(c.position)){ setRadio('c-cpos', 'bottom'); c.position = 'bottom'; }
     /* the hook on screen, drawn on the hook frame in each style, with the words the title would show */
     const ti = HW && HW._title, tw = ti ? ti.text.split(' ') : said.split(' ').slice(0,5), acc = ti ? ti.accent : tw.length-1;
     const clean = w => esc(w.replace(/[,;:]+$/,''));
@@ -906,7 +1016,7 @@
     if(!o){ if(titleOn){ setHTML(el, ''); titleOn = ''; } return; }
     const bw = box.clientWidth || 360, size = {soft:.092, clean:.082, poster:.138}[o.style] * bw;
     const shown = o.style==='poster' ? o.words.filter(w=>w.s <= o.t + 0.02) : o.words;   /* poster: each word as it is said */
-    const words = (shown.length ? shown : o.words.slice(0,1)).map((w,k)=>{ const x = esc(w.w.replace(/[,;:]+$/,'')); return o.style==='clean' && k===o.accent ? `<em>${x}</em>` : x; }).join(' ');
+    const words = (shown.length ? shown : o.words.slice(0,1)).map((w,k)=>{ const x = esc(cleanW(w.w).replace(/[,;:]+$/,'')); return o.style==='clean' && k===o.accent ? `<em>${x}</em>` : x; }).join(' ');
     const key = o.style + '|' + words;
     if(key===titleOn) return;
     const fresh = !titleOn.startsWith(o.style + '|'); titleOn = key;
@@ -936,13 +1046,32 @@
     const per = c.style==='lines' ? (+c.per_line || 4) : 99, lines = [];
     for(let i=0;i<chunk.length;i+=per) lines.push(chunk.slice(i,i+per));
     let q = 0;
-    const html = lines.map(l=>l.map(w=>(q++===hi) ? `<b>${esc(w.w)}</b>` : esc(w.w)).join(' ')).join('<br>');
+    const html = lines.map(l=>l.map(w=>(q++===hi) ? `<b>${esc(cleanW(w.w))}</b>` : esc(cleanW(w.w))).join(' ')).join('<br>');
     let spot = PV_POS[c.position] || PV_POS.bottom;
     if(c.position==='moves'){ const ends = groups.slice(0, g).filter(gr=>/[.?!]["')]*$/.test(gr[gr.length-1].w)).length; spot = PV_SPOTS[(ends*2 + 1) % PV_SPOTS.length]; }
+    /* round a black / image fit picture the render puts captions where captions.band_spots says (top: the band
+       above, just over the picture while the hook is up; middle: on the picture, lower third; else the band below),
+       and with no bands moves top ones down while the hook is up (captions.title_clear): the preview does the same */
+    const bw = box.clientWidth || 360, bh = box.clientHeight || 640;
+    const fs = bw * ((c.style==='lines' ? {s:.040,m:.048,l:.058} : {s:.050,m:.064,l:.080})[c.size] || .064);
+    const fitNow = fitAsked() ? PJ.settings.fit : 'crop', banded = fitNow==='black' || fitNow==='image';
+    const ptk = takeOf(u.take) || (PJ.takes||[])[0], [psw, psh] = ptk ? shownWH(ptk) : [16, 9];
+    const pic = Math.min(1, (bw/bh) * (psh/psw)) * (fitNow==='image' ? .92 : 1);
+    const need = fs * 1.18 * (c.style==='word' ? 1 : lines.length) / bh, gap = fs * .45 / bh;
+    const pt = .5 - pic/2, pb = .5 + pic/2, st = bw/bh < 1/1.2 ? .075 : .07, sb = .88;
+    const lowY = banded ? (sb - pb >= need + 2*gap ? (pb + sb)/2 : pb + gap + need/2) : PV_POS.bottom[1];
+    const hookUp = tUp && chunk[0].s - all[0].s < tUp;
+    if(banded && pic < 1){
+      if(c.position==='middle') spot = ['center', Math.min(pt + pic*5/6, pb - gap - need/2)];
+      else if(c.position==='top'){
+        const room = pt - .02 - (need + 2*gap) - st >= .06, edge = pt - gap - need/2;
+        spot = ['center', hookUp ? (room ? edge : lowY) : (pt - st >= need + 2*gap ? (st + pt)/2 : edge)];
+      } else spot = ['center', lowY];
+    }
+    else if(spot[1] < .4 && tUp && chunk[0].s - all[0].s < tUp) spot = ['center', lowY];
     cap.style.top = (spot[1]*100)+'%';
     cap.style.left = spot[0]==='center' ? '11%' : '7%'; cap.style.right = '11%'; cap.style.textAlign = spot[0];
-    const bw = box.clientWidth || 360;
-    cap.style.fontSize = Math.round(bw * ((c.style==='lines' ? {s:.040,m:.048,l:.058} : {s:.050,m:.064,l:.080})[c.size] || .064)) + 'px';
+    cap.style.fontSize = Math.round(fs) + 'px';
     const look = c.look || 'soft', motion = c.motion===false ? '' : (look==='clean' ? 'is-pop' : 'is-settle');
     const fresh = g !== capG || force; capG = g;
     const inner = cap.querySelector('.st-cap-in');
@@ -978,7 +1107,7 @@
     if(!cutting) clearSince('cutting');
     const b = $('#cut-it'), mins = Math.max(1, Math.ceil(cutEst()/60));
     b.disabled = cutting || !kept;
-    setHTML(b, cutting ? 'Making it now' : fresh ? `Back to my video${icon('i-next')}` : failed ? 'Try again' : hasCut() ? `Make version ${PJ.versions.length+1}${icon('i-next')}` : `Make my video${icon('i-next')}`);
+    setHTML(b, cutting ? 'Making it now' : fresh ? `Back to my video${icon('i-next')}` : failed ? 'Try again' : hasCut() ? `Make version ${nextV()}${icon('i-next')}` : `Make my video${icon('i-next')}`);
     setHTML($('#p3-msg'), cutting ? 'Your Mac is making the video.' : fresh ? 'Your video is made. Change anything to make a new version.' : `<b>About ${mins} minute${mins>1?'s':''}.</b> Free. Your Mac does the cutting.`);
     $('#p3-err').hidden = !failed;
     if(failed) setHTML($('#p3-err'), `<b>The video didn't get made.</b>${esc((PJ.errors||[]).join(' '))} Press Try again.`);
@@ -988,10 +1117,10 @@
     if(hasCut() && !dirty && PJ.stage!=='cut_failed'){ step(4); return; }
     if(board && !PJ.storyboard.approved) await approveStory();
     await saveSettings(); clearSince('cutting');
-    const had = PJ.versions.length;
+    const had = lastV(PJ);
     try {
       await api(`/api/project/${pid}/cut`, {}); dirty=false; wasCutting = true;
-      await started(()=>{ wasCutting = true; return PJ.stage==='cutting' || PJ.stage==='cut_failed' || PJ.versions.length>had; });
+      await started(()=>{ wasCutting = true; return PJ.stage==='cutting' || PJ.stage==='cut_failed' || lastV(PJ)>had; });
       if(PJ.stage!=='cut_failed') step(4);   /* the progress, then the video, both on Finish */
     } catch(e){ toast(e.message); }
   });
@@ -1000,7 +1129,8 @@
      dots on the same bar), export, versions. Fixes go through the chat (D24); a caption word is put right on the
      spot, on the Mac, without Claude. ---------- */
   let viewV = null, spots = [], picked = null, capData = null, capKey = '', capLines = [], capLineAt = -1;
-  const sentFix = new Set(), askedRecap = new Set();
+  const sentFix = new Set(), askedRecap = new Set(), hiddenSpots = new Set();
+  const spotKey = (v, i) => `${v.v}:${i.at}:${i.kind}`;
   const activeJobs = () => (PJ.jobs||[]).filter(j=>(j.type==='change'||j.type==='chat') && j.status!=='done' && j.status!=='failed');
   const shownV = () => PJ.versions.find(x=>x.v===viewV) || PJ.versions[PJ.versions.length-1];
   let cutStop = null, lastFill = '';
@@ -1041,13 +1171,12 @@
     $('#fn-ph').style.backgroundImage = `url("/media/${pid}/vframe/${v.v}")`;
     /* versions as small cards: the frame, the number, what changed */
     $('#vers-q').hidden = PJ.versions.length < 2;
-    setHTML($('#vchips'), PJ.versions.length>1 ? PJ.versions.map(x=>`<label class="ui-pick" title="${esc(verLabel(x.v, x.takes, x.at))}"><input type="radio" name="ver" value="${x.v}" ${x.v===v.v?'checked':''}><span class="ui-tile"><span class="fn-vph" style="background-image:url('/media/${pid}/vframe/${x.v}')"></span><span><b>${x.v}${x.v===last.v?' · newest':''}</b><br>${esc(changedLine(x.note) || (x.v===1 ? 'First cut' : when(x.at)))}</span></span></label>`).join('') : '');
+    setHTML($('#vchips'), PJ.versions.length>1 ? PJ.versions.map(x=>`<div class="fn-vcard"><label class="ui-pick" title="${esc(verLabel(x.v, x.takes, x.at))}"><input type="radio" name="ver" value="${x.v}" ${x.v===v.v?'checked':''}><span class="ui-tile"><span class="fn-vph" style="background-image:url('/media/${pid}/vframe/${x.v}')"></span><span><b>${x.v}${x.v===last.v?' · newest':''}</b><br>${esc(changedLine(x.note) || (x.v===1 ? 'First cut' : when(x.at)))}</span></span></label>${x.v!==last.v && x.v!==v.v ? `<button type="button" class="ui-ib fn-vdel" data-del-v="${x.v}" title="Delete version ${x.v}" aria-label="Delete version ${x.v}">${icon('i-trash')}</button>` : ''}</div>`).join('') : '');
     /* the checks: small things are fixed by the engine and never listed; what is left (3 at most, only what can
        be heard) is a dot on the bar */
     const items = (q.items||[]).filter(i=>i.show).slice(0,3);
     if(q.shape_ok===false && !items.some(i=>i.kind==='shape')) items.unshift({at:0, kind:'shape', say:'The shape came out different from what you picked', ask:'The video came out the wrong shape. Make it the shape I picked.'});
     spots = items.slice(0,3);
-    $('#spot-key').textContent = spots.length ? `${plural(spots.length,'spot')}, marked on the bar` : '';
     /* export stays Export. It used to turn into "Start a new video" in the same spot the moment the file was saved,
        so a second click there opened an empty new video (22 Nov). */
     const ex = (PJ.exports||[]).filter(x=>x.v===v.v).pop(), stale = ex && (v.captions_at||0) > ex.at;
@@ -1057,7 +1186,7 @@
     const fp = $('#fin-primary'); fp.disabled = exporting; fp.classList.toggle('is-primary', !ex || stale);
     setHTML(fp, exporting ? 'Saving' : ex ? 'Export again' : 'Export');
     /* a new version on its way: say so here, with the video still playable */
-    const job = activeJobs().find(j=>j.type==='change'), cutting = PJ.stage==='cutting', nv = PJ.versions.length+1;
+    const job = activeJobs().find(j=>j.type==='change'), cutting = PJ.stage==='cutting', nv = nextV();
     let html = '';
     if(cutting) html = cutProg(`Making version ${nv}`);
     else if(job){
@@ -1070,6 +1199,13 @@
     setHTML($('#p5-msg'), html ? 'Keep watching this version while the new one is made.' : '');
     renderTrack(v); renderPick(); syncCaptions(v);
   }
+  $('#vchips').addEventListener('click', e=>{
+    const b = e.target.closest('[data-del-v]'); if(!b) return;
+    const n = +b.dataset.delV, x = PJ.versions.find(y=>y.v===n); if(!x) return;
+    askDelete({title: `Delete version ${n}?`, what: `Moves version ${n} of this video to the Trash${x.disk ? ` (${gb(x.disk)})` : ''}. Your other versions and anything you exported stay.`,
+      ok: async () => { try { PJ.versions = (await api(`/api/project/${pid}/trash_version`, {v:n, shown: shownV().v})).versions; toast(`Version ${n} is in the Trash.`); renderFinish(); }
+        catch(err){ toast(err.message); } refreshProject(); }});
+  });
   $('#vchips').addEventListener('change', e=>{ if(e.target.name==='ver'){ viewV = +e.target.value; renderFinish(); renderStage(); } });
 
   /* --- the one timeline --- */
@@ -1106,7 +1242,7 @@
       el.classList.toggle('is-tip-l', i===0); el.classList.toggle('is-tip-r', i===n-1);
     });
     const tw = $('#track').offsetWidth;
-    $$('#track .tl-spot').forEach((m,k)=>{ const x = xAt(+m.dataset.at); if(x!=null){ m.style.left = x + 'px'; m.classList.toggle('is-tip-l', x < 110); m.classList.toggle('is-tip-r', x > tw - 110); } m.classList.toggle('is-sel', !!picked && picked.kind==='spot' && picked.k===k); });
+    $$('#track .tl-spot').forEach((m,k)=>{ const x = xAt(+m.dataset.at); if(x!=null){ m.style.left = x + 'px'; m.classList.toggle('is-tip-l', x < 110); m.classList.toggle('is-tip-r', x > tw - 110); } m.classList.toggle('is-sel', !!picked && picked.kind==='spot' && picked.k===k); m.hidden = !!spots[k] && hiddenSpots.has(spotKey(shownV(), spots[k])); });
     const knob = $('#knob'), x = xAt(t); if(knob && x!=null) knob.style.left = x + 'px';
     const dur = v.duration || cutPlayer.duration || 0;
     $('#tm').textContent = `${mmss(t)} / ${mmss(dur)}`;
@@ -1118,7 +1254,7 @@
   cutPlayer.addEventListener('timeupdate', ()=>{ if(cutStop!=null && cutPlayer.currentTime >= cutStop){ cutPlayer.pause(); cutStop=null; } placeTrack(); });
   ['play','pause','ended'].forEach(ev=>cutPlayer.addEventListener(ev, ()=>{ syncPP(); loopTrack(); }));
   ['seeked','loadedmetadata'].forEach(ev=>cutPlayer.addEventListener(ev, placeTrack));
-  function playSpan(a, b){ cutStop = b; cutPlayer.currentTime = Math.max(0, a); cutPlayer.play().catch(()=>{}); }
+  function playSpan(a, b){ cutStop = b; cutPlayer.currentTime = Math.max(0, a); playOn(cutPlayer); }
   function fillChat(text){ const i=$('#chat-in'); if(!i.value.trim() || i.value===lastFill){ i.value = text; lastFill = text; } i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
   const track = $('#track'); let drag = null, scrubbed = false;
   /* drag along the bar to scrub; a plain click picks the part or the spot */
@@ -1138,32 +1274,37 @@
     else return;
     renderPick(); placeTrack();
   });
-  /* "Worth a look": what is selected, Hear it and Fix it; when nothing is, a calm line */
+  /* "Worth a look": every spot as a row (time, what it is, Hear it, Fix it), all of them shown whether or not a dot is
+     picked (22 Nov: one card for three spots left the buyer asking where the other two were). A dot on the bar highlights and
+     scrolls to its row; the X hides that row. A picked part gets its own card above the list. */
   function renderPick(){
     const v = shownV(), secs = sectionsOf(v), nos = partNos(v), box2 = $('#pick'), q = v.qa || {}; let html = '';
-    if(picked && picked.kind==='spot' && spots[picked.k]){
-      const i = spots[picked.k], sent = sentFix.has(`${v.v}:${i.at}:${i.kind}`);
-      html = `<span><b>${esc(String(i.say||'').replace(/ at \d+:\d\d$/, ''))}</b> · ${mmss(i.at)}<small>${sent ? 'Sent to the chat. Claude Code fixes it in a new version.' : i.kind==='missing' ? 'Fix it moves the cut so the whole word is heard.' : 'Worth a look.'}</small></span>
-        <button type="button" class="ui-btn is-sm" data-hear-spot="${picked.k}">${icon('i-play')}Hear it</button><button type="button" class="ui-btn is-sm is-navy" data-fix-spot="${picked.k}" ${sent?'disabled':''}>${sent?'Sent':'Fix it'}</button>`;
-    } else if(picked && picked.kind==='sec' && secs[picked.i]){
+    if(picked && picked.kind==='spot' && (!spots[picked.k] || hiddenSpots.has(spotKey(v, spots[picked.k])))) picked = null;
+    if(picked && picked.kind==='sec' && secs[picked.i]){
       const s = secs[picked.i];
-      html = `<span><b>${esc(secTitle(s, nos[picked.i]))}</b><small>${mmss(s.start)} to ${mmss(s.end)}. Say what to change.</small></span><button type="button" class="ui-btn is-sm is-navy" data-fix-sec="${picked.i}">Fix it</button>`;
-    } else {
-      picked = null;
+      html += `<div class="fn-pick"><span><b>${esc(secTitle(s, nos[picked.i]))}</b><small>${mmss(s.start)} to ${mmss(s.end)}. Say what to change.</small></span><button type="button" class="ui-btn is-sm is-navy" data-fix-sec="${picked.i}">Fix it</button><button type="button" class="ui-ib" data-pick-x aria-label="Close" title="Close">${icon('i-x')}</button></div>`;
+    } else if(picked && picked.kind==='sec') picked = null;
+    const rows = spots.map((i,k)=>({i,k})).filter(({i})=>!hiddenSpots.has(spotKey(v, i)));
+    html += rows.map(({i,k})=>{
+      const sent = sentFix.has(spotKey(v, i)), sel = !!picked && picked.kind==='spot' && picked.k===k;
+      return `<div class="fn-pick fn-spot${sel?' is-sel':''}" data-spot-row="${k}"><span class="fn-at">${mmss(i.at)}</span><span><b>${esc(String(i.say||'').replace(/ at \d+:\d\d$/, ''))}</b><small>${sent ? 'Sent to the chat. Claude Code fixes it in a new version.' : i.kind==='missing' ? 'Fix it moves the cut so the whole word is heard.' : 'Worth a look.'}</small></span>
+        <button type="button" class="ui-btn is-sm" data-hear-spot="${k}">${icon('i-play')}Hear it</button><button type="button" class="ui-btn is-sm is-navy" data-fix-spot="${k}" ${sent?'disabled':''}>${sent?'Sent':'Fix it'}</button><button type="button" class="ui-ib" data-hide-spot="${k}" aria-label="Hide this one" title="Hide this one">${icon('i-x')}</button></div>`;
+    }).join('');
+    if(!rows.length){
       const fixed = q.self_repairs||0, fx = Object.keys(PJ.fixes||{}).length;
       const good = [fixed ? `${fixed} fix${fixed===1?'':'es'} made for you` : '', fx ? `${plural(fx,'caption word')} put right` : ''].filter(Boolean).join(' · ');
-      html = spots.length ? `<span><span class="fn-dot"></span>Click a dot under the video to hear it.${good?`<small>${esc(good)}</small>`:''}</span>`
-        : `<span class="fn-good">${esc(good ? 'Checked. ' + good + '.' : 'Checked. Nothing needs a look.')}</span>`;
+      html += `<div class="fn-pick is-calm"><span class="fn-good">${esc(good ? 'Checked. ' + good + '.' : 'Checked. Nothing needs a look.')}</span></div>`;
     }
-    if(picked) html += `<button type="button" class="ui-ib" data-pick-x aria-label="Close" title="Close">${icon('i-x')}</button>`;
-    box2.classList.toggle('is-calm', !picked);
     setHTML(box2, html);
+    $('#spot-key').textContent = rows.length ? `${plural(rows.length,'spot')}, marked on the bar` : '';
+    const sel = box2.querySelector('.fn-spot.is-sel'); if(sel) sel.scrollIntoView({block:'nearest', behavior:'smooth'});
   }
   $('#pick').addEventListener('click', e=>{
-    const sp = e.target.closest('[data-fix-spot]'), sc = e.target.closest('[data-fix-sec]'), hs = e.target.closest('[data-hear-spot]'), v = shownV();
+    const sp = e.target.closest('[data-fix-spot]'), sc = e.target.closest('[data-fix-sec]'), hs = e.target.closest('[data-hear-spot]'), hd = e.target.closest('[data-hide-spot]'), v = shownV();
     if(e.target.closest('[data-pick-x]')){ picked = null; renderPick(); placeTrack(); return; }
-    if(hs){ const i = spots[+hs.dataset.hearSpot]; if(i) playSpan(i.at-2, i.at+1.5); return; }
-    if(sp){ const i = spots[+sp.dataset.fixSpot]; if(!i) return; sentFix.add(`${v.v}:${i.at}:${i.kind}`); renderPick(); sendChat({text:i.ask, kind:'change'}); chat(true, true); toast('Sent to the chat. Claude Code will fix it in a new version.'); }
+    if(hd){ const k = +hd.dataset.hideSpot, i = spots[k]; if(!i) return; hiddenSpots.add(spotKey(v, i)); if(picked && picked.kind==='spot' && picked.k===k) picked = null; renderPick(); placeTrack(); return; }
+    if(hs){ const k = +hs.dataset.hearSpot, i = spots[k]; if(!i) return; picked = {kind:'spot', k}; playSpan(i.at-2, i.at+1.5); renderPick(); placeTrack(); return; }
+    if(sp){ const i = spots[+sp.dataset.fixSpot]; if(!i) return; sentFix.add(spotKey(v, i)); renderPick(); sendChat({text:i.ask, kind:'change'}); chat(true, true); toast('Sent to the chat. Claude Code will fix it in a new version.'); }
     if(sc){ const i = +sc.dataset.fixSec, s = sectionsOf(v)[i]; lastFill = $('#chat-in').value; fillChat(`In part ${partNos(v)[i]} (${mmss(s.start)} to ${mmss(s.end)}), `); }
   });
 
@@ -1257,7 +1398,8 @@
     if(taken && PJ.stage==='cutting') return ['Your Mac is cutting the new version', (PJ.progress && PJ.progress.label) || '', 1];
     if(taken) return ['Working on it', j.type==='change' ? 'Claude Code is making the change.' : 'Claude Code is writing an answer.', 1];
     if(connected()) return ['Working on it', 'Claude Code is picking up your message.', 1];
-    return ['Waiting for Claude Code', CC_HELP + '. Your message is saved.', 0];
+    if(ccWait()) return ['Connecting to Claude', 'Claude Code is starting on your Mac. Your message is saved.', 0];
+    return ['Waiting for Claude', 'Press Connect Claude above. Your message is saved.', 0];
   }
   function examples(){
     if(S.step===2 && board){ const n = keptBeats().length; return [n>=3 ? 'Open with part 3' : 'Open with part 2', 'Make it shorter', 'Tell it another way']; }
@@ -1268,9 +1410,12 @@
   }
   function renderChat(){
     if(!PJ) return;
-    const on = connected(), act = activeJobs(), ob = $('#ch-open');
-    ob.classList.toggle('is-off', !on); ob.title = on ? 'Claude is listening' : "Claude isn't listening";
+    const on = connected(), act = activeJobs(), ob = $('#ch-open'), wait = !on && ccWait();
+    ob.classList.toggle('is-off', !on && !wait); ob.classList.toggle('is-wait', wait);
+    ob.title = on ? 'Claude is listening' : wait ? 'Connecting to Claude' : "Claude isn't listening";
+    ob.setAttribute('aria-label', `Chat. ${ob.title}`);
     $('#chat-off').hidden = on || act.some(j=>j.status==='taken');
+    if(!$('#chat-off').hidden) setHTML($('#chat-off'), ccOff('').replace(/^<div class="[^"]*">|<\/div>$/g, ''));
     setHTML($('#chips'), examples().map(c=>`<button type="button">${esc(c)}</button>`).join(''));
     $('#chat-in').placeholder = hasCut() || board ? 'Say what to change' : 'Ask anything about this video';
     const events = (PJ.chat||[]).map(m=>({at:m.at, html:`<li class="ch-m ${m.who==='you'?'is-me':'is-cl'}"><span class="ch-who">${m.who==='you'?'You':'Claude'}</span>${esc(m.text)}</li>`}))
@@ -1283,9 +1428,6 @@
     act.forEach(j=>{ const l = jobLine(j); events.push(`<li class="ch-m is-cl is-work"><span class="ui-spin is-sm${l[2]?'':' is-wait'}"></span><span><b>${l[0]}${l[2]?'…':''}</b><small>${esc(l[1])}</small><small><span data-from="${Math.round(j.created*1000)}">0:00</span> so far${!l[2]?'':j.type==='change'?', usually 2 to 4 minutes':', usually under a minute'}</small></span></li>`); });
     const lastJob = (PJ.jobs||[]).filter(j=>j.type!=='story').pop();
     if(lastJob && lastJob.status==='failed' && !lastJob.reply) events.push(`<li class="ch-m is-cl"><span class="ch-who">Claude</span>That one didn't work. Try saying it another way.</li>`);
-    /* two tries through the chat and still asking: point at finishing by hand, shown greyed until that ships */
-    if((PJ.jobs||[]).filter(j=>j.type==='change' && (j.status==='done'||j.status==='failed')).length >= 2 && !act.length)
-      events.push(`<li class="ch-m is-offer">Still not right after two tries? Small fixes like a trim are quicker by hand.<button type="button" class="ui-btn is-sm" disabled>Finish it in Edits <span class="ui-soon">Coming next</span></button></li>`);
     if(pendingAsk) events.push(`<li class="ch-m is-me is-draft"><span class="ch-who">You, not sent yet</span>${esc(pendingAsk.text)}</li>
       <li class="ch-confirm"><b>Happy with the instructions?</b>${hu('change')}<span class="ui-row"><button type="button" class="ui-btn is-primary" data-chat-go>Go</button><button type="button" class="ui-btn" data-chat-no>Edit it</button></span></li>`);
     if(setHTML($('#msgs'), events.join(''))){ $('#msgs').scrollTop = $('#msgs').scrollHeight; tick(); }
@@ -1306,30 +1448,42 @@
   $('#chips').addEventListener('click', e=>{ const b=e.target.closest('button'); if(!b) return; lastFill = $('#chat-in').value; fillChat(b.textContent); });
   $('#msgs').addEventListener('click', e=>{
     const w = e.target.closest('[data-watch]');
-    if(w){ viewV = +w.dataset.watch; chat(false); step(4); cutPlayer.play().catch(()=>{}); return; }
+    if(w){ viewV = +w.dataset.watch; chat(false); step(4); playOn(cutPlayer); return; }
     if(e.target.closest('[data-chat-no]')){ $('#chat-in').value = pendingAsk.text; pendingAsk=null; renderChat(); $('#chat-in').focus(); return; }
     if(!e.target.closest('[data-chat-go]') || !pendingAsk) return;
     const a = pendingAsk; pendingAsk = null; sendChat(a); if(S.step!==4) step(4, true);
   });
 
   /* ---------- render + poll ---------- */
+  /* zooms only apply where the picture fills the frame (zoom.fills, render.py): with Black bars, Picture background
+     or Blur the zoom tiles say so and offer Fill in one click. The zoom choice stays saved as it is. */
+  function zoomBlockedBy(){ const f = PJ && PJ.settings && PJ.settings.fit, name = {black:'Black bars', image:'Picture background', pad:'Blur'}[f]; return fitAsked() && name ? name : ''; }
+  function renderZoomHint(){
+    const by = PJ ? zoomBlockedBy() : '', el = $('#zoom-hint'); el.hidden = !by; if(!by) return;
+    $('#zoom-hint-t').textContent = `Zooms work with Fill. Your video uses ${by}.`;
+  }
+  $('#zoom-fill').addEventListener('click', async ()=>{
+    setRadio('fit', 'crop'); renderFitBg(); await saveSettings({fit: 'crop'});
+    toast('Switched to Fill. Zooms are on.');
+  });
   function renderAll(){
     if(!PJ) return;
-    renderFiles(); renderFitBg(); renderStepper(); renderP1(); renderStory(); renderPreview(); renderCut(); renderFinish(); renderChat(); renderProjects(); updateFitQuestion(); renderGuess(); renderStage(); syncPP();
+    renderFiles(); renderFitBg(); renderStepper(); renderP1(); renderStory(); renderPreview(); renderCut(); renderFinish(); renderChat(); renderProjects(); updateFitQuestion(); renderGuess(); renderStage(); renderZoomHint(); syncPP();
     syncHeard();
   }
-  async function refreshState(){ try { ST = await api('/api/state'); renderSetup(); if(screenNow==='setup') renderSetupPics(); if(PJ) renderAll(); } catch(e){} }
+  async function refreshState(){ try { ST = await api('/api/state' + (pid ? `?open=${encodeURIComponent(pid)}` : '')); renderSetup(); if(screenNow==='setup') renderSetupPics(); if(PJ) renderAll(); } catch(e){} }
   async function refreshProject(){
     if(!pid) return;
     try {
       const want = pid, fresh = await api('/api/project/'+want);
       if(want!==pid) return;
-      const before = PJ ? PJ.versions.length : 0, hadStory = !!hasStory(), wasCap = PJ && PJ.id===fresh.id && PJ.recaption;
+      const before = PJ && PJ.id===fresh.id ? lastV(PJ) : lastV(fresh), hadStory = !!hasStory(), wasCap = PJ && PJ.id===fresh.id && PJ.recaption;
       PJ = fresh;
       if(wasCap && !PJ.recaption && !PJ.recaption_error) toast('Your captions are updated.');
-      if(PJ.versions.length > before) viewV = null;
+      const grew = lastV(PJ) > before;
+      if(grew) viewV = null;
       renderAll();
-      if(PJ.versions.length > before){ wasCutting=false; dirty=false; step(4, true); toast(`${PJ.versions.length===1?'Your video':'Version '+PJ.versions.length} is ready. Press play.`); }
+      if(grew){ wasCutting=false; dirty=false; step(4, true); toast(`${lastV(PJ)===1?'Your video':'Version '+lastV(PJ)} is ready. Press play.`); }
       else if(wasCutting && PJ.stage!=='cutting') wasCutting=false;
       if(!hadStory && hasStory() && S.step===2){ toast('Your story is ready to check.'); loadPart(0); renderStage(); }
       if(PJ.stage==='cutting') wasCutting = true;
@@ -1337,7 +1491,7 @@
   }
   const busy = () => PJ && (['hearing','story_wait','cutting'].includes(PJ.stage) || (PJ.jobs||[]).some(j=>j.status!=='done'&&j.status!=='failed'));
   async function loop(){ await refreshProject(); setTimeout(loop, busy() ? 1500 : 4000); }
-  async function stateLoop(){ await refreshState(); setTimeout(stateLoop, (ST && ST.setup.installing) || busy() ? 2000 : 5000); }
+  async function stateLoop(){ await refreshState(); setTimeout(stateLoop, (ST && ST.setup.installing) || busy() || ccWait() ? 2000 : 5000); }
 
   (async function init(){
     await refreshState();
@@ -1374,3 +1528,87 @@ function updateFitQuestion(){
     document.querySelectorAll('#fit-q .ft-fitpic, #fit-q .ft-fitpic i').forEach(p => { p.style.backgroundImage = `url("${src}")`; }); }
 }
 document.addEventListener('change', e => { if(e.target && (e.target.name === 'format' || e.target.name === 'purpose')) updateFitQuestion(); });
+
+/* hp- on-demand help (22 Nov 2026: "only when people want to know what those mean"). Each "?" button carries
+   data-help, a key in HELP; one popover for the page, so only one is open at a time. It opens under the button
+   (above when there is no room), kept inside the tools panel so it never covers the video, and closes on a
+   click outside, on Esc (focus back to the "?") or when the button scrolls out of the panel. Each entry: up to
+   3 short lines; "Label: words" shows the label in bold. Meanings come from the code: story-method.md (filmed,
+   order), shape.py (shape, fit), captions.py (look, where, words, motion), cutrules.py (cut, pace), zoom.py,
+   titles.py (hook), qa.py (spots). */
+const HELP = {
+  'filmed': ['Just talked: we find the story in everything you said, put your hook first and drop the rambling.',
+             'Read a script: paste it. We keep its order and pick your best take of each line.'],
+  'order': ['Yes: we may move parts around so the story lands better.',
+            'No: we keep the order you said it in, and only pick the best takes and trim.'],
+  'length': ['The longest your video should be. To fit, we leave out the weaker parts of the story.',
+             'Any length: as long as the story needs.'],
+  'shape': ['Full screen: upright, for Reels, Shorts and TikTok. Feed post: a little shorter, for the Instagram feed.',
+            'Square: works anywhere. Wide: for YouTube, TV and laptops.'],
+  'fit': ['Fill: zooms in to fill the screen and follows your face. Some edges get cut.',
+          'Black bars: all of it, on black. Picture background: all of it, on a darkened still of your video or a picture of your own.',
+          'Blur: all of it, on a soft blur of itself.'],
+  'look': ['How your captions look. Soft: cream, with a gentle shadow. Clean: bold capitals. Glow: white with a gold glow.',
+           'The words are always exactly what you said.'],
+  'where': ['Where the words sit on the screen.',
+            'Moves around: changes spot when a new sentence starts, and stays put at least 1.6 s first.'],
+  'where-band': ['Your sideways video sits in the middle with empty space above and below.',
+                 'Top and Bottom: the words go in that space. On the video: on the picture, low down.'],
+  'words': ['How many words show at once. One: word by word. A few: up to three.',
+            'Full line: whole lines, up to the most words you set. None: no captions.'],
+  'motion': ['Words pop in: each caption comes in with a quick pop.',
+             'Light up each word: the word you are saying turns your colour as you say it.'],
+  'cut': ['Ums: um, uh and loose fillers. Long pauses: silences made shorter.',
+          'Retakes: a line you said more than once. We keep your best one.'],
+  'pace': ['How much room is left around each sentence.',
+           'Tight: fast, one line straight into the next. Relaxed: a breath between them.'],
+  'hook': ['Your opening line in big words at the top for the first 2 or 3 seconds, so people scrolling know what it is about.',
+           'Off: no words on screen at the start.'],
+  'zoom': ['At each cut: a quick zoom in on your face, so a jump cut looks like a new shot.',
+           'Slow push: a gentle zoom in across your hook as well. Only works with Fill.'],
+  'srt': ['A separate captions file. Upload it to YouTube and it shows its own captions, which viewers can turn on or off.'],
+  'spots': ['Places that may sound off: a word cut short at a join, an um we missed, a word said twice, or the voice out of step with the lips.',
+            'Hear it, then fix it if it bothers you.'],
+};
+(function(){
+  const pop = document.getElementById('hp-pop'); if(!pop) return;
+  let at = null;   // the "?" whose text is showing
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const line = t => { const m = /^([^:.]{1,24}):\s(.*)$/.exec(t); return `<p>${m ? `<b>${esc(m[1])}:</b> ${esc(m[2])}` : esc(t)}</p>`; };
+  function place(){
+    if(!at) return;
+    const b = at.getBoundingClientRect(), panel = (at.closest('.ed-panel') || document.body).getBoundingClientRect();
+    if(b.bottom < panel.top || b.top > panel.bottom || !at.offsetParent){ close(false); return; }
+    const w = Math.min(320, panel.width - 24);
+    pop.style.maxWidth = w + 'px';
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    const left = Math.max(panel.left + 12, Math.min(b.left + b.width/2 - pw/2, panel.right - 12 - pw));
+    const below = b.bottom + 8, above = b.top - 8 - ph;
+    pop.style.left = Math.round(left) + 'px';
+    pop.style.top = Math.round(below + ph > Math.min(window.innerHeight, panel.bottom) - 8 && above > panel.top ? above : below) + 'px';
+  }
+  function open(btn){
+    if(at && at !== btn) at.setAttribute('aria-expanded', 'false');
+    at = btn;
+    const lines = (HELP[btn.dataset.help] || []).slice(0, 3);
+    pop.innerHTML = lines.map(line).join('');
+    pop.hidden = false; btn.setAttribute('aria-expanded', 'true'); place();
+  }
+  function close(focus){
+    if(!at) return;
+    const b = at; at = null; pop.hidden = true; b.setAttribute('aria-expanded', 'false');
+    if(focus) b.focus();
+  }
+  document.addEventListener('click', e => {
+    const btn = e.target.closest && e.target.closest('.hp-q');
+    if(btn){ e.preventDefault(); e.stopPropagation(); if(at === btn) close(false); else open(btn); return; }
+    if(at && !pop.contains(e.target)) close(false);
+  }, true);
+  document.addEventListener('keydown', e => {
+    if(e.key === 'Escape' && at){ e.stopImmediatePropagation(); e.preventDefault(); close(true); }
+  }, true);
+  document.addEventListener('focusin', e => { if(at && e.target !== at && !pop.contains(e.target)) close(false); });
+  window.addEventListener('resize', place);
+  document.addEventListener('scroll', place, true);
+  window.hpClose = () => close(false);
+})();

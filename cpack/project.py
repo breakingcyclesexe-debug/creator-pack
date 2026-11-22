@@ -22,7 +22,9 @@ DEFAULT_SETTINGS = {
                  'zoom': 'punch'},   # punch-ins alternating at joins (zoom.py); 'push' adds a slow push-in on the hook
     'export': {'max_mb': 0},
     'title': 'off',   # the hook line big at the start (titles.py): off, soft, clean, poster
-    'backdrop': {'take': '', 't': -1.0},   # the image fit's still: a take and a time; '' / -1 = the middle of the first clip
+    # the image fit's background: a still (a take and a time; '' / -1 = the middle of the first clip), or the buyer's
+    # own picture, copied into the project's backdrop/ folder ('backdrop/NAME'). The picture wins over the still.
+    'backdrop': {'take': '', 't': -1.0, 'image': ''},
 }
 CHOICES = {'purpose': {'ig', 'yt', 'other'}, 'format': {'9:16', '16:9', '4:5', '1:1', 'source'}, 'fit': {'crop', 'pad', 'black', 'image'},
            'mode': {'find', 'keep', 'script'}, 'length': {'auto', 'short', 'mid', 'long'},
@@ -190,6 +192,10 @@ TURNS = {0, 90, 180, 270}
 def migrate(pj):
     """Projects made before turn per clip (CT-133) had one turn for the whole project: every clip gets it."""
     old = pj.get('settings', {}).pop('turn', None)
+    # settings added after a project was made (backdrop, title, ...) get their defaults, so old projects accept them
+    st = pj.setdefault('settings', {})
+    for k, v in DEFAULT_SETTINGS.items():
+        if k not in st: st[k] = copy.deepcopy(v)
     for t in pj.get('takes', []):
         if 'turn' not in t: t['turn'] = int(old or 0) % 360
     return pj
@@ -281,10 +287,74 @@ def listing():
                 out.append({'id': pid, 'name': pj.get('name'), 'stage': pj.get('stage'), 'created': pj.get('created'),
                             'title': title_of(pj, sb), 'story': str(sb.get('one_line', ''))[:240], 'empty': not pj.get('takes'),
                             'thumb': (pj.get('takes') or [{}])[0].get('name', ''), 'versions': len(vs),   # the Your videos menu
-                            'duration': (vs[-1].get('duration') if vs else None), 'exported': bool(pj.get('exports'))})
+                            'duration': (vs[-1].get('duration') if vs else None), 'exported': bool(pj.get('exports')),
+                            'size': size_of(os.path.join(projects_dir(), pid)),   # what it takes on this Mac (working files)
+                            'folder_size': size_of(pj['folder']) if pj.get('takes') and pj.get('folder') and os.path.isdir(pj['folder']) else 0})
     named = [x for x in out if not x['empty']]   # empty videos never show in the list, so they never take a number
     numbered(named)
     return out
+
+
+def size_of(path):
+    """Bytes a folder takes on the Mac (links not followed)."""
+    total = 0
+    for d, _dirs, files in os.walk(path):
+        for f in files:
+            try: total += os.lstat(os.path.join(d, f)).st_size
+            except OSError: pass
+    return total
+
+
+def folder_has_files(d):
+    return any(files for _r, _d, files in os.walk(d)) if d and os.path.isdir(d) else False
+
+
+def trash_project(pid, with_folder=False):
+    """A video goes to the Trash: its working files (project, story, versions, cache). Its own folder (Footage,
+    References, Exports) only when asked; clips that live elsewhere on the Mac are never touched."""
+    if not valid_id(pid): raise ValueError('bad id')
+    pj = read_json(os.path.join(folder(pid), 'project.json'))
+    if pj is None: raise KeyError(pid)
+    d = pj.get('folder')
+    P.trash(folder(pid))
+    moved = {'project': True, 'folder': False}
+    if d and os.path.isdir(d) and os.path.realpath(d) != os.path.realpath(home()):
+        inside_home = os.path.realpath(d).startswith(os.path.realpath(home()) + os.sep)
+        if with_folder and inside_home: P.trash(d); moved['folder'] = True
+        elif not folder_has_files(d): shutil.rmtree(d, ignore_errors=True)   # only empty Footage/References/Exports: nothing to keep
+    return moved
+
+
+def trash_version(pid, v, shown=None):
+    """An old version of a video to the Trash. Never the newest one, never the one on screen."""
+    v = int(v)
+    with locked(pid):
+        pj = load(pid); vs = pj.get('versions') or []
+        if not any(x['v'] == v for x in vs): raise ValueError('no such version')
+        if v == vs[-1]['v']: raise ValueError("The newest version stays. Make a new one first.")
+        if shown is not None and int(shown) == v: raise ValueError('Show another version first.')
+        d = os.path.join(folder(pid), f'v{v}')
+        if os.path.isdir(d): P.trash(d)
+        pj['versions'] = [x for x in vs if x['v'] != v]
+        save(pj)
+    return pj['versions']
+
+
+def tidy_empty(keep=None, older=3600):
+    """Empty "New video" projects (no clips, no story, no versions) clean themselves up: all but the newest one (the
+    page reuses it) and the one open, once they are an hour old. They hold nothing, so they go outright."""
+    os.makedirs(projects_dir(), exist_ok=True)
+    empties = []
+    for pid in os.listdir(projects_dir()):
+        pj = read_json(os.path.join(folder(pid), 'project.json')) if valid_id(pid) else None
+        if pj and is_empty(pid, pj): empties.append((float(pj.get('created') or 0), pid, pj))
+    gone = []
+    for _c, pid, pj in sorted(empties, reverse=True)[1:]:
+        if pid == keep or time.time() - float(pj.get('created') or 0) < older: continue
+        d = pj.get('folder')
+        if d and os.path.isdir(d) and not folder_has_files(d) and os.path.realpath(d) != os.path.realpath(home()): shutil.rmtree(d, ignore_errors=True)
+        shutil.rmtree(folder(pid), ignore_errors=True); gone.append(pid)
+    return gone
 
 
 def merge_settings(cur, new):
@@ -294,6 +364,7 @@ def merge_settings(cur, new):
         if k not in DEFAULT_SETTINGS: continue
         if isinstance(DEFAULT_SETTINGS[k], dict):
             if not isinstance(v, dict): continue
+            if not isinstance(out.get(k), dict): out[k] = copy.deepcopy(DEFAULT_SETTINGS[k])   # a project from before this key
             for k2, v2 in v.items():
                 if k2 not in DEFAULT_SETTINGS[k]: continue
                 d2 = DEFAULT_SETTINGS[k][k2]; key = f'{k}.{k2}'
@@ -303,13 +374,76 @@ def merge_settings(cur, new):
                     try: v2 = type(d2)(v2)
                     except (TypeError, ValueError): continue
                 elif k2 in ('color', 'pop') and not HEX.match(str(v2)): continue
+                elif key == 'backdrop.image':
+                    v2 = clean_backdrop_image(v2)
+                    if v2 is None: continue
                 out[k][k2] = v2
+            if k == 'backdrop' and ('take' in v or 't' in v) and 'image' not in v: out[k]['image'] = ''   # a frame picked: the still again
         else:
             if k in CHOICES:
                 if v not in CHOICES[k]: continue
             if k == 'script': v = str(v)[:20000]
             out[k] = v
     return out
+
+
+# ---- the image fit's own picture (backdrop.image): kept in <project>/backdrop/, never pointing anywhere else
+PICTURE_EXT = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif'}   # what can be dropped or chosen
+KEPT_EXT = {'.jpg', '.jpeg', '.png', '.webp'}   # what is kept (heic is turned into jpg on the way in)
+
+
+def clean_backdrop_image(v):
+    """'' or 'backdrop/NAME' with a plain picture name; None for anything else (a full path, '..', another folder)."""
+    v = str(v or '').strip()
+    if not v: return ''
+    m = re.fullmatch(r'backdrop/([^/\\\x00-\x1f]{1,120})', v)
+    if not m or m.group(1).startswith('.') or os.path.splitext(m.group(1))[1].lower() not in KEPT_EXT: return None
+    return v
+
+
+def backdrop_image(pj):
+    """Full path of the project's own background picture, or None (not set, gone, or outside the project)."""
+    rel = clean_backdrop_image(((pj.get('settings') or {}).get('backdrop') or {}).get('image'))
+    if not rel or not valid_id(pj.get('id')): return None
+    base = os.path.realpath(os.path.join(folder(pj['id']), 'backdrop')); f = os.path.realpath(os.path.join(folder(pj['id']), rel))
+    return f if f.startswith(base + os.sep) and os.path.isfile(f) else None
+
+
+def add_backdrop_image(pid, src, name=None):
+    """Copy a picture into the project's backdrop/ folder (heic becomes jpg, with the Mac's sips) and return
+    'backdrop/NAME'. The original stays where it is. Raises ValueError for anything that isn't a readable picture."""
+    name = os.path.basename(name or src)
+    stem, ext = os.path.splitext(name); ext = ext.lower()
+    if ext not in PICTURE_EXT: raise ValueError('Choose a picture: jpg, png, heic or webp')
+    if not os.path.isfile(src): raise ValueError('That picture is not there')
+    stem = re.sub(r'[^\w .()-]', '_', stem).strip(' .')[:80] or 'picture'
+    out_ext = '.jpg' if ext in ('.heic', '.heif') else ('.jpg' if ext == '.jpeg' else ext)
+    d = os.path.join(folder(pid), 'backdrop'); os.makedirs(d, exist_ok=True)
+    dst, n = os.path.join(d, stem + out_ext), 2
+    while os.path.exists(dst): dst = os.path.join(d, f'{stem}-{n}{out_ext}'); n += 1
+    tmp = dst + '.part' + out_ext
+    try:
+        if ext in ('.heic', '.heif'):
+            import subprocess
+            r = subprocess.run(['/usr/bin/sips', '-s', 'format', 'jpeg', src, '--out', tmp], capture_output=True, text=True)
+            if r.returncode != 0 or not os.path.exists(tmp): raise ValueError('That heic picture could not be read')
+        else:
+            shutil.copyfile(src, tmp)
+        from PIL import Image
+        try:
+            with Image.open(tmp) as im: im.verify()
+        except Exception: raise ValueError('That file is not a picture we can read')
+        os.replace(tmp, dst)
+    finally:
+        if os.path.exists(tmp): os.remove(tmp)
+    return 'backdrop/' + os.path.basename(dst)
+
+
+def set_backdrop_image(pid, src, name=None):
+    """Copy the picture in and make it the image fit's background. Returns the settings."""
+    rel = add_backdrop_image(pid, src, name)
+    pj = update(pid, lambda p: p.update(settings=merge_settings(p['settings'], {'backdrop': {'image': rel}})))
+    return pj['settings']
 
 
 def take_name(pj, path):

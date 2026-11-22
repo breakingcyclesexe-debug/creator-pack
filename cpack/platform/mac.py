@@ -143,6 +143,24 @@ def open_folder(path):
     subprocess.run(['open', path], capture_output=True)
 
 
+def trash(path):
+    """Into the Mac's Trash, never deleted outright, so the buyer can put it back (Finder: Put Back). macOS 15 has
+    /usr/bin/trash; older Macs ask Finder. CPACK_TRASH names a folder to move things into instead (tests)."""
+    if not os.path.exists(path): return
+    fake = os.environ.get('CPACK_TRASH')
+    if fake:
+        os.makedirs(fake, exist_ok=True); dst = os.path.join(fake, os.path.basename(path)); n = 2
+        while os.path.exists(dst): dst = os.path.join(fake, f'{os.path.basename(path)} {n}'); n += 1
+        shutil.move(path, dst); return
+    if os.access('/usr/bin/trash', os.X_OK):
+        r = subprocess.run(['/usr/bin/trash', path], capture_output=True, text=True)
+    else:
+        r = subprocess.run(['osascript', '-e', 'on run a', '-e', 'tell application "Finder" to delete (POSIX file (item 1 of a))',
+                            '-e', 'end run', path], capture_output=True, text=True)
+    if r.returncode != 0 or os.path.exists(path):
+        raise RuntimeError("Couldn't move it to the Trash. " + (r.stderr.strip()[:200] or 'Try again.'))
+
+
 def open_url(url):
     if os.environ.get('CPACK_NO_BROWSER'): return   # headless runs and tests: no browser window
     subprocess.run(['open', url], capture_output=True)
