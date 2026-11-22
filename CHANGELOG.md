@@ -2,6 +2,10 @@
 
 Creator Pack Editor, beta. Newest first. Each version here is a tag and a release on the beta repo.
 
+## 0.1.4-beta (22 Nov 2026)
+
+- The hook title never stops on a weak word like "very".
+
 ## 0.1.3-beta (22 Nov 2026)
 
 - New layout: your video big in the middle on every step, steps down the side, chat at the bottom.

@@ -77,19 +77,22 @@ def opening_line(words):
 
 def pick(words):
     """Indexes [n0, n1) of the title words: the opening line, or 3 to 7 of its words in a row when it is long,
-    chosen to end on a natural break (a comma) and a strong word, and to be said inside MAX_T."""
+    chosen to end on a natural break (a comma) and a strong word, and to be said inside MAX_T. One word more (8)
+    only when every run of up to 7 stops on a weak word and the 8th lands it (all-on test, 22 Nov: a slow opener
+    gave "I FEEL WE ARE IN A VERY" where "... VERY EXCITING" was said in time)."""
     a, b = opening_line(words)
     if b - a == 0: return 0, 0
     while b - a > MIN_WORDS and norm(words[a]['w']) in LEAD: a += 1
     def fits(n1): return words[n1 - 1]['e'] - words[0]['s'] <= MAX_T - 0.3
     if b - a <= MAX_WORDS and fits(b): return a, b
     best, best_score = None, None
-    for n1 in range(a + 1, min(b, a + MAX_WORDS) + 1):
+    for n1 in range(a + 1, min(b, a + MAX_WORDS + 1) + 1):
         n = n1 - a
         if not fits(n1) and n1 > a + 1: break
         last = words[n1 - 1]['w'].strip()
         score = n * 1.0
         if n < MIN_WORDS: score -= 6
+        if n > MAX_WORDS: score -= 3   # the extra word only wins over a run that stops on a weak word
         if PUNCT_END.search(last): score += 3
         if norm(last) in WEAK: score -= 5
         if best_score is None or score >= best_score: best, best_score = n1, score

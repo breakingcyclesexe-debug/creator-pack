@@ -1,7 +1,7 @@
 {
   "name": "creator-pack",
   "displayName": "Creator Pack Editor",
-  "version": "0.1.3-beta",
+  "version": "0.1.4-beta",
   "description": "Creator Pack Editor (beta). Turn raw talking-head takes into a finished video on your own Mac: a local page for footage, story, look, cut and export, with your own Claude Code building the story.",
   "author": {
     "name": "Breaking Cycles"
