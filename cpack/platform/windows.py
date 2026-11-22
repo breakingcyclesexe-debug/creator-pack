@@ -15,4 +15,4 @@ def _todo(*_a, **_k):
     raise NotImplementedError('The creator pack runs on a Mac for now. Windows comes in a later version.')
 
 
-data_home = tool = whisper_model = whisper_device = font = font_cjk = han = install_steps = pick_files = reveal = open_url = _todo
+data_home = tool = whisper_model = whisper_device = font = font_heavy = font_cjk = han = install_steps = pick_files = reveal = open_url = _todo

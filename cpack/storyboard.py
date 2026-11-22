@@ -90,6 +90,7 @@ def check(sb, takes):
     if shp not in SHAPES: errors.append(f'shape must be one of {sorted(SHAPES)}')
     alts0 = sb.get('shape_alts') or [a.get('shape') for a in arcs if isinstance(a, dict) and a is not won]
     out = {'mode': mode, 'shape': shp, 'one_line': str(sb.get('one_line', ''))[:240],
+           'short_title': ' '.join(str(sb.get('short_title') or '').split())[:48],   # 3 to 6 words, for the "Your videos" list
            'shape_alts': list(dict.fromkeys(s for s in alts0 if s in SHAPES and s != shp)),
            'advice': [str(a)[:200] for a in sb.get('advice', [])][:5], 'beats': [], 'left_out': []}
     if not out['one_line']: errors.append('one_line is empty: the story in one sentence, in plain words')

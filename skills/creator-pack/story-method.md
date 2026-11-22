@@ -68,6 +68,7 @@ Never open on a line that already opened one of their posts (when they mention i
 
 ## One line and advice
 - `one_line`: the winner's story in one plain sentence a friend would say.
+- `short_title`: 3 to 6 words that name this video in the buyer's list of videos, from their own words ("Quit and drove out of Hong Kong"). No full stop.
 - `advice`: up to 3 short, specific tips, e.g. a stronger hook found later in the take, a missing close. No generic advice.
 
 ## The JSON

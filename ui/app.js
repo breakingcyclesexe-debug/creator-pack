@@ -69,15 +69,15 @@
     renderProjects();
     if(name==='editor') ensureProject();
     window.scrollTo(0,0);
-    const h = name==='setup' ? $('#setup-h') : $('#p'+S.step+' h1'); if(h) h.focus({preventScroll:true});
+    const h = name==='setup' ? $('#setup-h') : $(PANEL[S.step]+' h1'); if(h) h.focus({preventScroll:true});
   }
   document.addEventListener('click', e => { const b=e.target.closest('[data-go]'); if(b) go(b.dataset.go); });
   document.addEventListener('click', e=>{ const c=e.target.closest('[data-copy]'); if(!c) return; navigator.clipboard.writeText(c.dataset.copy).then(()=>toast('Copied.'), ()=>toast('Select it and copy.')); });
 
   /* ---------- setup ---------- */
   const sel = {};
-  const TOOL = {brew:['Homebrew','Installs the other tools.'], python:['Helper files','Small helpers that stay inside the pack.'], ffmpeg:['Video cutter','Cuts and joins your video (ffmpeg).'],
-    whisper:['Speech listener','Hears your words, on your Mac (whisper).'], model:['Speech model',''], node:['Node.js','Not needed yet. A later version uses it for titles.']};
+  const TOOL = {brew:['Homebrew','A free installer for the Mac. It fetches the tools below.'], python:['Helper files','Small helpers that stay inside the pack.'], ffmpeg:['Video cutter','Cuts and joins your video (ffmpeg).'],
+    whisper:['Speech listener','Hears your words, on your Mac (whisper).'], model:['Speech model','The part that understands your words. One 1.6 GB download, kept on your Mac.'], node:['Node.js','Not needed yet. A later version uses it for titles.']};
   const toolName = t => (TOOL[t.id]||[t.name])[0];
   function setupRow(t){
     if(sel[t.id]===undefined) sel[t.id] = !t.optional;
@@ -96,7 +96,7 @@
   }
   function renderSetup(){
     if(!ST) return;
-    const s = ST.setup, items = s.items, need = items.filter(t=>!t.optional), n = need.filter(t=>t.found).length;
+    const s = ST.setup, items = s.items.filter(t=>!(t.optional && t.id==='node')), need = items.filter(t=>!t.optional), n = need.filter(t=>t.found).length;   /* Node.js is not used yet: no row for it */
     setHTML($('#tools'), items.map(setupRow).join(''));
     const q = items.filter(t=>!t.found && sel[t.id] && !t.manual).length, pb = $('#setup-primary');
     $('#setup-h').textContent = s.ready ? 'Your Mac is ready' : 'Get your Mac ready';
@@ -155,10 +155,12 @@
   $('#studio-close').addEventListener('click', () => { showStudio(false); studioTab.focus(); });
   document.addEventListener('keydown', e => { if(e.key==='Escape' && !studio.hidden){ showStudio(false); studioTab.focus(); } });
   document.addEventListener('click', e => { if(!studio.hidden && !e.target.closest('#studio-card, #tab-studio')) showStudio(false); });
-  $('#studio-want').addEventListener('click', async () => {
+  const wantStudio = async () => {
     try { await api('/api/interest', {what:'story_studio', project: (typeof pid!=='undefined' && pid) || ''}); toast('Thanks. The waitlist page is open in your browser.'); } catch(e){ toast(e.message); }
     showStudio(false);
-  });
+  };
+  $('#studio-want').addEventListener('click', wantStudio);
+  document.querySelectorAll('.ss-want').forEach(b => b.addEventListener('click', wantStudio));
 
   /* ---------- versions: "Version 2 · 3 clips · today 14:02" ---------- */
   function when(at){
@@ -175,22 +177,24 @@
   const heard = () => PJ && stageAt() >= 2;
   const hasStory = () => PJ && PJ.storyboard;
   const hasCut = () => PJ && PJ.versions && PJ.versions.length > 0;
-  const STEPS=['Footage','Story','Look','Cut','Finish'];
-  const canStep = n => n===1 || (n===2 && PJ && stageAt()>=1) || ((n===3||n===4) && hasStory()) || (n===5 && hasCut());
-  const stepDone = n => !!([heard(), hasStory() && PJ.storyboard.approved, hasStory() && PJ.storyboard.approved && (S.step>3 || hasCut()), hasCut(), PJ && (PJ.exports||[]).length>0][n-1]);
+  /* four steps. Tidy up and Make my video sit at the end of Look (a page of switches was not a step) */
+  const STEPS=['Footage','Story','Look','Finish'], PANEL = {1:'#p1', 2:'#p2', 3:'#p3', 4:'#p5'};
+  const making = () => PJ && PJ.stage==='cutting';
+  const canStep = n => n===1 || (n===2 && PJ && stageAt()>=1) || (n===3 && hasStory()) || (n===4 && (hasCut() || making()));
+  const stepDone = n => !!([heard(), hasStory() && PJ.storyboard.approved, hasCut(), PJ && (PJ.exports||[]).length>0][n-1]);
   function renderStepper(){
-    setHTML($('#stepper'), STEPS.map((l,i)=>{ const n=i+1; return `<li class="${stepDone(n)?'done':''}"><button type="button" data-step="${n}" ${n===S.step?'aria-current="step"':''} ${canStep(n)?'':'disabled'} aria-label="Step ${n} of 5, ${l}"><span class="n"><span>${n}</span>${icon('i-check')}</span>${l}</button></li>`; }).join(''));
+    setHTML($('#stepper'), STEPS.map((l,i)=>{ const n=i+1; return `<li class="${stepDone(n)?'done':''}"><button type="button" data-step="${n}" ${n===S.step?'aria-current="step"':''} ${canStep(n)?'':'disabled'} aria-label="Step ${n} of 4, ${l}"><span class="n"><span>${n}</span>${icon('i-check')}</span>${l}</button></li>`; }).join(''));
   }
   function step(n, quiet){
     if(!canStep(n)) return;
     if(S.step===2 && n>2 && hasStory() && !PJ.storyboard.approved) approveStory();
     S.step=n;
-    for(let i=1;i<=5;i++) $('#p'+i).hidden = i!==n;
+    for(let i=1;i<=4;i++) $(PANEL[i]).hidden = i!==n;
     renderAll();
-    if(!quiet){ window.scrollTo(0,0); $('#p'+n+' h1').focus({preventScroll:true}); }
+    if(!quiet){ window.scrollTo(0,0); $(PANEL[n]+' h1').focus({preventScroll:true}); }
   }
   document.addEventListener('click', e=>{ const b=e.target.closest('[data-step]'); if(b && !b.disabled) step(+b.dataset.step); });
-  const autoStep = () => hasCut() ? 5 : PJ.stage==='cutting' || PJ.stage==='cut_failed' ? 4 : stageAt()>=1 ? 2 : 1;
+  const autoStep = () => hasCut() || PJ.stage==='cutting' ? 4 : PJ.stage==='cut_failed' ? 3 : stageAt()>=1 ? 2 : 1;
 
   let ensuring = null;
   function ensureProject(){ return ensuring || (ensuring = _ensure().finally(()=>{ ensuring = null; })); }
@@ -209,15 +213,42 @@
     if(PJ && !PJ.takes.length){ step(1); toast('This one is empty. Add your clips here.'); return; }
     const p = await api('/api/project/new', {}); await openProject(p.id); toast('Ready for a new video. Add your clips.');
   }
-  $('#new-video').addEventListener('click', newVideo);
-  $('#proj-pick').addEventListener('change', e=>openProject(e.target.value));
+  /* "Your videos": short names with the date, New video on top, rename in place. Never the Mac's grey list. */
+  const vmenu = $('#vmenu'), vlist = $('#vlist'), vbtn = $('#vbtn'); let renaming = '';
+  function showVideos(on){ vlist.hidden = !on; vbtn.setAttribute('aria-expanded', on); if(!on) renaming = ''; renderProjects(); if(on){ const c = vlist.querySelector('.cur .vopen'); (c || vlist.querySelector('button')).focus(); } }
+  vbtn.addEventListener('click', e=>{ e.stopPropagation(); showVideos(vlist.hidden); });
+  document.addEventListener('click', e=>{ if(!vlist.hidden && !e.composedPath().includes(vmenu)) showVideos(false); });
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape' && !vlist.hidden){ showVideos(false); vbtn.focus(); } });
+  vlist.addEventListener('keydown', e=>{
+    if(e.key!=='ArrowDown' && e.key!=='ArrowUp' || e.target.tagName==='INPUT') return;
+    const f = Array.from(vlist.querySelectorAll('.vnew, .vopen')), i = f.indexOf(document.activeElement.closest('.vnew, .vopen') || document.activeElement);
+    e.preventDefault(); f[(i + (e.key==='ArrowDown'?1:-1) + f.length) % f.length].focus();
+  });
+  vlist.addEventListener('click', async e=>{
+    const o = e.target.closest('[data-open]'), r = e.target.closest('[data-rename]');
+    if(e.target.closest('.vnew')){ showVideos(false); newVideo(); return; }
+    if(r){ renaming = r.dataset.rename; renderProjects(); const i = vlist.querySelector('form input'); i.focus(); i.select(); return; }
+    if(o){ showVideos(false); if(o.dataset.open!==pid) openProject(o.dataset.open); }
+  });
+  vlist.addEventListener('submit', async e=>{
+    e.preventDefault(); const id = renaming, t = e.target.querySelector('input').value.trim();
+    try { const r = await api(`/api/project/${id}/rename`, {title:t}); ST.projects = r.projects; if(id===pid && PJ) PJ.title = (r.projects.find(p=>p.id===id)||{}).title; } catch(err){ toast(err.message); }
+    renaming = ''; renderProjects(); const b = vlist.querySelector(`[data-open="${id}"]`); if(b) b.focus();
+  });
   function renderProjects(){
-    const list = ((ST && ST.projects) || []).filter(p=>p.id===pid || p.name!=='My video').slice(0,15);
-    const show = screenNow==='editor' && !!PJ;
-    $('#new-video').hidden = !show; $('#proj-pick').hidden = $('#proj-lab').hidden = !show || list.length < 2;
+    const all = (ST && ST.projects) || [];
+    const list = all.filter(p=>p.id===pid || !p.empty).slice(0,30);
+    vmenu.hidden = !(screenNow==='editor' && !!PJ);
     const day = t => t ? new Date(t*1000).toLocaleDateString([], {day:'numeric', month:'short'}) : '';
-    const nm = p => p.id===pid && PJ ? (PJ.storyboard && PJ.storyboard.one_line) || (PJ.takes.length ? PJ.name : 'New video') : p.story || p.name;
-    if(setHTML($('#proj-pick'), list.map(p=>`<option value="${p.id}">${esc([day(p.created), nm(p)].filter(Boolean).join(' · ').slice(0,80))}</option>`).join(''))) $('#proj-pick').value = pid;
+    const nm = p => p.id===pid && PJ ? PJ.title || p.title : p.title || p.name;
+    const cur = list.find(p=>p.id===pid);
+    $('#vbtn-t').textContent = cur ? nm(cur) : PJ ? PJ.title || 'New video' : '';
+    if(vlist.hidden) return;
+    setHTML(vlist, `<button type="button" class="vnew">${icon('i-plus')}New video</button>` + (list.length ? '<p class="lab">Your videos</p>' : '') + list.map(p=>{
+      const full = p.id===pid && PJ && PJ.storyboard ? PJ.storyboard.one_line : p.story;
+      if(renaming===p.id) return `<div class="vrow${p.id===pid?' cur':''}"><form><label class="sr" for="vname">Name of this video</label><input type="text" id="vname" maxlength="60" value="${esc(nm(p))}" autocomplete="off"><button type="submit" class="btn navy sm">Save</button></form></div>`;
+      return `<div class="vrow${p.id===pid?' cur':''}"><button type="button" class="vopen" data-open="${p.id}" title="${esc(full||nm(p))}" ${p.id===pid?'aria-current="true"':''}><b>${esc(nm(p))}</b><span>${esc(day(p.created))}</span></button><button type="button" class="ib" data-rename="${p.id}" title="Rename" aria-label="Rename ${esc(nm(p))}">${icon('i-pen')}</button></div>`;
+    }).join(''));
   }
 
   /* ---------- footage ---------- */
@@ -249,7 +280,6 @@
   }
   $('#open-foot').addEventListener('click', ()=>openFolder('Footage'));
   $('#scan-now').addEventListener('click', ()=>scanFolder(true));
-  $('#open-exports').addEventListener('click', ()=>openFolder('Exports'));
   window.addEventListener('focus', ()=>scanFolder(false));
   document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) scanFolder(false); });
   async function addPicked(){
@@ -292,6 +322,8 @@
   const PURPOSE = {ig:'Instagram', yt:'YouTube', other:'somewhere else'};
   const SHAPE_WORD = {'9:16':'upright', '4:5':'tall', '1:1':'square', '16:9':'wide', source:'the same shape you filmed'};
   const CAP_NAME = {word:'Captions, one word at a time', three:'Captions, a few words at a time', lines:'Captions in full lines', none:'No captions'};
+  const LOOK_NAME = {soft:'Soft', clean:'Clean', glow:'Glow'};
+  const POS_NAME = {top:'at the top', middle:'in the middle', bottom:'at the bottom', left:'on the left', right:'on the right', moves:'moving around'};
   function renderLens(){
     const p = val('purpose')||'ig', cur = PJ ? PJ.settings.length : 'auto';
     const opts = LENS[p];
@@ -305,9 +337,10 @@
     $('#script-text').value = s.script||''; $('#lang').value = s.language||'auto'; renderWords();
     $('#small-file').checked = !!(s.export && s.export.max_mb);
     setRadio('cap', s.captions.style); setRadio('c-csize', s.captions.size); setRadio('c-cpos', s.captions.position);
-    $('#c-hi').value = s.captions.pop; $('#c-wpl').value = s.captions.per_line;
+    setRadio('c-look', s.captions.look || 'soft'); $('#c-motion').checked = s.captions.motion !== false;
+    $('#c-hi').value = s.captions.pop; $('#c-popon').checked = !!s.captions.pop_on; $('#c-hi-f').hidden = !s.captions.pop_on; $('#c-wpl').value = s.captions.per_line;
     setRadio('breath', s.cut.breath);
-    $('#q-filler').checked = s.cut.fillers; $('#q-pause').checked = s.cut.pauses; $('#q-repeat').checked = s.cut.repeats; $('#q-best').checked = s.cut.best_take;
+    $('#q-filler').checked = s.cut.fillers; $('#q-pause').checked = s.cut.pauses; $('#q-best').checked = s.cut.repeats;
     renderLens(); syncMode(); updateFitQuestion();
   }
   function formSettings(){
@@ -315,8 +348,8 @@
     return {purpose: val('purpose'), format: val('format'), fit: val('fit'), language: $('#lang').value,
       mode: filmed==='script' ? 'script' : ($('#keep-order').checked ? 'keep' : 'find'), script: $('#script-text').value,
       length: val('len') || 'auto', export: {max_mb: $('#small-file').checked ? 24 : 0},
-      captions: {style: val('cap'), size: val('c-csize'), position: val('c-cpos'), pop: $('#c-hi').value, per_line: +$('#c-wpl').value},
-      cut: {breath: val('breath') || 'normal', fillers: $('#q-filler').checked, pauses: $('#q-pause').checked, repeats: $('#q-repeat').checked, best_take: $('#q-best').checked}};
+      captions: {style: val('cap'), look: val('c-look') || 'soft', size: val('c-csize'), position: val('c-cpos'), motion: $('#c-motion').checked, pop: $('#c-hi').value, pop_on: $('#c-popon').checked, per_line: +$('#c-wpl').value},
+      cut: {breath: val('breath') || 'normal', fillers: $('#q-filler').checked, pauses: $('#q-pause').checked, repeats: $('#q-best').checked, best_take: $('#q-best').checked}};
   }
   let saveT;
   async function saveSettings(extra){
@@ -335,6 +368,7 @@
     if(i.id==='lang') renderWords();
     if(i.name==='purpose'){ setRadio('format', FMT[i.value]); renderLens(); updateFitQuestion(); }
     if(i.name==='filmed') syncMode();
+    if(i.id==='c-popon') $('#c-hi-f').hidden = !i.checked;
     clearTimeout(saveT); saveT = setTimeout(()=>saveSettings(), 150);
     markDirty();
   });
@@ -455,7 +489,7 @@
     }).join('');
     if($('#board')._h !== html){ $('#player-home').appendChild(playBox); setHTML($('#board'), html); if(playingId) mountPlayer(playingId); }
     const secs = kept.reduce((a,b)=>{const u=beatUse(b);return a+(u.end-u.start);},0);
-    $('#sb-count').textContent = board.beats.every(b=>ready(beatUse(b).take)) ? `${kept.length} of ${board.beats.length} in, about ${mmss(secs)} before tidying` : 'Play buttons wake up in a moment. Your Mac is making a quick preview.';
+    $('#sb-count').textContent = board.beats.every(b=>ready(beatUse(b).take)) ? `${kept.length} of ${board.beats.length} parts kept, about ${mmss(secs)} before tidying` : 'Play buttons wake up in a moment. Your Mac is making a quick preview.';
     setHTML($('#p2-msg'), `<b>${kept.length} part${kept.length===1?'':'s'}, about ${mmss(secs)}.</b>Want it told another way? Ask in the chat.`);
     const out = (board.left_out||[]).map(x=>`${x.start!=null?mmss(x.start)+' ':''}${x.line?`"${x.line.slice(0,80)}${x.line.length>80?'...':''}" `:''}${x.why}`)
       .concat(board.beats.filter(b=>b.keep===false).map(b=>`${b.label}, you left it out`));
@@ -514,11 +548,48 @@
     if(f){ pv.style.backgroundImage = `url("${frameSrc(f)}")`; pv.style.backgroundSize = PJ.settings.fit==='pad' && fitAsked() ? 'contain' : 'cover'; }
     const cap = $('#pv-cap'), none = c.style==='none';
     cap.hidden = none; $('#cap-more').style.opacity = none ? .4 : 1; $('#cap-more').style.pointerEvents = none ? 'none' : '';
+    $('#look-card').style.opacity = none ? .4 : 1; $('#look-card').style.pointerEvents = none ? 'none' : '';
     $('#wpl-field').hidden = c.style!=='lines';
-    setHTML(cap, c.style==='word' ? '<b>WORDS</b>' : c.style==='three' ? 'YOUR <b>WORDS</b> HERE' : 'YOUR WORDS SHOW <b>UP</b><br>LIKE THIS, A LINE<br>OR THREE');
-    cap.querySelectorAll('b').forEach(x=>x.style.color = c.pop);
-    cap.style.fontSize = ({s:'13px',m:'17px',l:'22px'})[c.size] || '17px';
-    cap.style.top = c.position==='top' ? '12%' : c.position==='middle' ? '45%' : 'auto'; cap.style.bottom = c.position==='bottom' ? '14%' : 'auto';
+    if(f) document.querySelectorAll('.look-pic').forEach(p=>p.style.backgroundImage = `linear-gradient(rgba(0,0,0,.38),rgba(0,0,0,.38)),url("${frameSrc(f)}")`);
+    paintCap(true);
+    if(!pvTimer) pvTimer = setInterval(()=>paintCap(false), 420);
+  }
+  /* the preview plays a few captions the way the video will: a new caption pops in, the word being said switches,
+     "moves around" changes spot on a new sentence (same spots as cpack/captions.py) */
+  const PV_LINES = [['I','quit','my','job.'], ['Then','I','drove','out'], ['of','Hong','Kong.'], ['Two','years','on,'], ['still','figuring','it','out.']];
+  const PV_SPOTS = [['center',.74],['left',.62],['right',.30],['left',.24],['right',.56],['center',.20]];
+  const PV_POS = {top:['center',.16], middle:['center',.5], bottom:['center',.74], left:['left',.70], right:['right',.70]};
+  let pvTimer = 0, pvStep = 0, pvKey = '';
+  function paintCap(settingsChanged){
+    if(!PJ || $('#p3').hidden) return;
+    const c = PJ.settings.captions, cap = $('#pv-cap'), pv = $('#pv');
+    if(c.style==='none') return;
+    const look = c.look || 'soft', key = [look, c.style, c.size, c.position, c.motion, c.pop, pv.clientWidth].join();
+    if(settingsChanged && key===pvKey) return;
+    if(settingsChanged){ pvKey = key; pvStep = 0; } else pvStep++;
+    /* which caption and which word: full lines shows two phrases at once */
+    const per = c.style==='lines' ? 2 : 1, groups = [];
+    for(let i=0;i<PV_LINES.length;i+=per) groups.push(PV_LINES.slice(i,i+per));
+    const count = gr => gr.reduce((a,l)=>a+l.length,0);
+    const total = groups.reduce((a,gr)=>a+count(gr),0);
+    let n = pvStep % total, g = 0;
+    while(n >= count(groups[g])){ n -= count(groups[g]); g++; }
+    let lines = groups[g], hi = n, fresh = n===0;
+    if(c.style==='word'){ lines = [[lines.flat()[n]]]; hi = 0; fresh = true; }
+    else if(c.style==='three'){ const flat = lines.flat(), k0 = Math.floor(n/3)*3; lines = [flat.slice(k0,k0+3)]; hi = n-k0; fresh = n%3===0; }
+    let k = 0;
+    const html = lines.map(l=>l.map(w=>(k++===hi) ? `<b>${esc(w)}</b>` : esc(w)).join(' ')).join('<br>');
+    let spot = PV_POS[c.position] || PV_POS.bottom;
+    if(c.position==='moves'){ const said = PV_LINES.slice(0, g*per).filter(l=>/[.?!]$/.test(l[l.length-1])).length; spot = PV_SPOTS[(said*2 + 1) % PV_SPOTS.length]; }
+    cap.style.top = (spot[1]*100)+'%';
+    cap.style.left = spot[0]==='center' ? '11%' : '7%'; cap.style.right = '11%'; cap.style.textAlign = spot[0];
+    cap.style.fontSize = Math.round(pv.clientWidth * ((c.style==='lines' ? {s:.040,m:.048,l:.058} : {s:.050,m:.064,l:.080})[c.size] || .064)) + 'px';
+    const motion = c.motion===false ? '' : (look==='clean' ? 'pop' : 'settle');
+    const inner = cap.querySelector('.pv-in');
+    if(inner && !fresh && !settingsChanged) inner.innerHTML = html;
+    else setHTML(cap, `<span class="pv-in lk-${look}${motion ? ' '+motion : ''}">${html}</span>`);
+    const pop = look==='glow' && /^#(e3991d|e8a13d)$/i.test(c.pop) ? '#faf6ec' : c.pop;
+    cap.querySelectorAll('b').forEach(x=>x.style.color = c.pop_on ? pop : '');
   }
 
   /* ---------- step 4: cut ---------- */
@@ -535,33 +606,40 @@
   function renderCut(){
     const s = PJ.settings, cutting = PJ.stage==='cutting', failed = PJ.stage==='cut_failed';
     const kept = board ? board.beats.filter(b=>b.keep!==false).length : 0;
-    const out = [s.cut.fillers&&'ums and uhs', s.cut.pauses&&'long pauses', s.cut.repeats&&'repeats', s.cut.best_take&&'retakes'].filter(Boolean);
+    const out = [s.cut.fillers&&'ums', s.cut.pauses&&'long pauses', s.cut.repeats&&'retakes'].filter(Boolean);
+    const list = out.length>1 ? out.slice(0,-1).join(', ') + ' and ' + out[out.length-1] : out[0] || '';
+    const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
+    /* the tidy up choices in one line, so the section can stay closed */
+    $('#tidy-sum').textContent = `${out.length ? cap(list) + ' cut' : 'Nothing cut'} · ${s.cut.breath} pauses`;
+    const last = hasCut() ? PJ.versions[PJ.versions.length-1] : null, reps = last && last.kept_repeats || 0;
+    $('#kept-reps').hidden = !reps;
+    if(reps) $('#kept-reps').textContent = `${reps} repeat${reps===1?' was':'s were'} kept in your last version, because you said ${reps===1?'it':'them'} on purpose.`;
     const bits = [`Your story in ${kept} part${kept===1?'':'s'}, about ${mmss(keptSecs())} before tidying`,
       `Made for ${PURPOSE[s.purpose]}, ${SHAPE_WORD[s.format]}${fitAsked() ? (s.fit==='pad' ? `, whole picture with a soft blur ${fitAsked()==='upright'?'at the sides':'above and below'}` : ', zoomed in to fill the screen') : ''}`,
-      CAP_NAME[s.captions.style],
-      out.length ? `Taken out, ${out.join(', ')}` : 'Nothing taken out, your words as you said them',
-      `${{tight:'Tight',normal:'Normal',relaxed:'Relaxed'}[s.cut.breath]} pauses between sentences`,
+      s.captions.style==='none' ? CAP_NAME.none : `${CAP_NAME[s.captions.style]}, ${LOOK_NAME[s.captions.look||'soft']} look, ${POS_NAME[s.captions.position]||'at the bottom'}${s.captions.motion===false ? '' : ', popping in'}`,
+      out.length ? `${cap(list)} cut out` : 'Nothing cut out, your words as you said them',
+      `${cap(s.cut.breath)} pauses between sentences`,
       s.export.max_mb ? 'A small file, under 25 MB' : 'Full picture quality'];
     setHTML($('#recap'), bits.map(b=>`<li>${icon('i-check')}<span>${esc(b)}</span></li>`).join(''));
     const fresh = hasCut() && !dirty && !cutting && !failed;
-    setHTML($('#p4-prog'), cutting ? cutProg(hasCut() ? `Making version ${PJ.versions.length+1}` : 'Making your video') : ''); tick();
     if(!cutting) clearSince('cutting');
-    $('#p4-form').hidden = cutting;
-    $('#p4-h').textContent = cutting ? 'Making your video' : 'Tidy up and make the video';
-    $('#p4-sub').textContent = cutting ? 'Your Mac is doing the work. Nothing to press.' : 'Choose what gets cleaned out. Then your Mac cuts it.';
     const b = $('#cut-it');
     b.disabled = cutting || !kept;
-    setHTML(b, cutting ? 'Working' : fresh ? `See my video${icon('i-next')}` : failed ? 'Try again' : hasCut() ? 'Make a new version' : 'Make my video');
-    setHTML($('#p4-msg'), cutting ? 'You can leave this page open. It moves on by itself when the video is ready.' : fresh ? 'Your video is made. Change anything above to make a new version.' : `<b>${dirty ? 'You changed something. Make a new version?' : 'Happy with these choices?'}</b>Free. Your Mac does the cutting.`);
-    $('#p4-err').hidden = !failed;
-    if(failed) setHTML($('#p4-err'), `<b>The video didn't get made.</b>${esc((PJ.errors||[]).join(' '))}`);
+    setHTML(b, cutting ? 'Making it now' : fresh ? `See my video${icon('i-next')}` : failed ? 'Try again' : hasCut() ? 'Make a new version' : 'Make my video');
+    setHTML($('#p3-msg'), cutting ? 'Your Mac is making the video.' : fresh ? 'Your video is made. Change anything above to make a new version.' : `<b>${dirty ? 'You changed something. Make a new version?' : 'Happy with these choices?'}</b>Free. Your Mac does the cutting, so this uses nothing from your Claude plan. About ${Math.max(1, Math.ceil((25 + keptSecs()*0.45)/60))} minute${Math.ceil((25 + keptSecs()*0.45)/60)>1?'s':''}.`);
+    $('#p3-err').hidden = !failed;
+    if(failed) setHTML($('#p3-err'), `<b>The video didn't get made.</b>${esc((PJ.errors||[]).join(' '))} Press Try again.`);
   }
   $('#cut-it').addEventListener('click', async ()=>{
-    if(hasCut() && !dirty && PJ.stage!=='cut_failed'){ step(5); return; }
+    if(hasCut() && !dirty && PJ.stage!=='cut_failed'){ step(4); return; }
     if(board && !PJ.storyboard.approved) await approveStory();
     await saveSettings(); clearSince('cutting');
     const had = PJ.versions.length;
-    try { await api(`/api/project/${pid}/cut`, {}); dirty=false; wasCutting = true; await started(()=>{ wasCutting = true; return PJ.stage==='cutting' || PJ.stage==='cut_failed' || PJ.versions.length>had; }); } catch(e){ toast(e.message); }
+    try {
+      await api(`/api/project/${pid}/cut`, {}); dirty=false; wasCutting = true;
+      await started(()=>{ wasCutting = true; return PJ.stage==='cutting' || PJ.stage==='cut_failed' || PJ.versions.length>had; });
+      if(PJ.stage!=='cut_failed') step(4);   /* the progress card, then the video, both on Finish */
+    } catch(e){ toast(e.message); }
   });
 
   /* ---------- step 5: finish. One player, one timeline under it (sections as chapter marks, at most 3 spots
@@ -575,8 +653,19 @@
   const sectionsOf = v => (v.sections && v.sections.length) ? v.sections : [{label:'', start:0, end:v.duration||cutPlayer.duration||1}];
   const secTitle = (s,i,n) => `Section ${i+1} of ${n}${s.label ? ' · '+s.label : ''}`;
   const plural = (n, w) => `${n} ${w}${n===1?'':'s'}`;
+  /* what changed in this version, as one plain sentence, or nothing (never a bare internal note) */
+  function changedLine(note){
+    const t = String(note||'').trim().replace(/\s+/g,' ');
+    if(t.length < 12 || !/\s/.test(t) || /^(test|engine|check|debug|wip|tmp)\b/i.test(t)) return '';
+    return 'Changed: ' + t.charAt(0).toLowerCase() + t.slice(1).replace(/\.$/, '') + '.';
+  }
   function renderFinish(){
-    if(!hasCut()) return;
+    /* the first video is being made: the progress card lives here, and the video appears in its place */
+    const first = !hasCut();
+    $('#finish').hidden = first; $('#p5-first').hidden = !first;
+    $('#p5-h').textContent = first ? 'Making your video' : 'Your video';
+    $('#p5-sub').textContent = first ? 'Your Mac is doing the work. Nothing to press. Your video shows up here when it is ready.' : 'Watch it through. Export it when it feels right, or say what to change in the chat.';
+    if(first){ setHTML($('#p5-first'), making() ? cutProg('Making your video') : ''); tick(); return; }
     const last = PJ.versions[PJ.versions.length-1], v = shownV(), q = v.qa || {};
     const src = `/media/${pid}/video/${v.v}?c=${Math.round(v.captions_at||0)}`;
     if(!cutPlayer.src.endsWith(src)){
@@ -589,7 +678,7 @@
     setHTML($('#vchips'), PJ.versions.length>1 ? '<span class="lab">Versions</span>' + PJ.versions.map(x=>`<button type="button" data-v="${x.v}" aria-pressed="${x.v===v.v}" title="${esc(verLabel(x.v, x.takes, x.at))}" aria-label="Version ${x.v}">${x.v}</button>`).join('') : '');
     $('#vtag').textContent = PJ.versions.length>1 ? `Version ${v.v}${v.v===last.v?', the newest':''}` : 'Your first cut';
     $('#stats').textContent = `${mmss(v.duration)} long · ${v.size_mb} MB · ${v.width>v.height?'wide':v.width<v.height?'upright':'square'}`;
-    $('#vnote').textContent = v.note ? `What changed. ${v.note}` : '';
+    $('#vnote').textContent = changedLine(v.note);
     /* the checks, as one quiet line. Small things are fixed by the engine and never listed; what is left (3 at
        most, only what can be heard) is a dot on the bar. */
     const items = (q.items||[]).filter(i=>i.show).slice(0,3);
@@ -599,11 +688,14 @@
     const good = [q.shape_ok===false ? '' : 'Shape right', ls && ls.measured && ls.ok ? 'lips in sync' : '', fixed ? `${fixed} fix${fixed===1?'':'es'} made for you` : '', fx ? `${plural(fx,'caption word')} put right` : ''].filter(Boolean);
     setHTML($('#qa-line'), `<p class="quiet">${icon('i-check')}<span>${esc(good.join(' · ') || 'Checked')}</span></p>` +
       (spots.length ? `<p class="quiet"><i></i><span>${plural(spots.length,'spot')} worth a look, marked on the bar</span></p>` : ''));
+    /* Export stays Export. It used to turn into "Start a new video" in the same spot the moment the file was saved,
+       so a second click there opened an empty new video: "the whole clip is gone, the page is refreshed" (22 Nov). */
     const ex = (PJ.exports||[]).filter(x=>x.v===v.v).pop(), stale = ex && (v.captions_at||0) > ex.at;
     $('#final').hidden = !ex;
-    if(ex) setHTML($('#final'), stale ? `<b>Saved before you fixed the captions.</b><br>Export it again to save the new one.` : `<b>Saved on your Mac.</b><br>${esc(ex.path)}`);
-    setHTML($('#fin-primary'), !ex ? 'Export' : stale ? 'Export it again' : 'Start a new video');
-    $('#fin-again').hidden = !ex || stale;
+    if(ex) setHTML($('#final'), `${icon('i-check')}<span><b>${stale ? 'Saved before you fixed the captions' : 'Saved to Exports'}</b><small>${stale ? 'Export again to save the new one.' : esc(String(ex.path).split('/').pop())}</small><button type="button" class="linkbtn" data-open-exports>Open the folder</button></span>`);
+    const fp = $('#fin-primary'); fp.disabled = exporting; fp.classList.toggle('primary', !ex || stale);
+    setHTML(fp, exporting ? 'Saving' : ex ? 'Export again' : 'Export');
+    $('#fin-new').hidden = !ex;
     /* a new version on its way: say so here, with the video still playable */
     const job = activeJobs().find(j=>j.type==='change'), cutting = PJ.stage==='cutting', nv = PJ.versions.length+1;
     let html = '';
@@ -615,27 +707,28 @@
       else html = prog({title:`Making version ${nv}`, detail: taken ? 'Claude Code is working out the change you asked for.' : 'Claude Code is picking up your message.', steps, at: taken?1:0, frac:.4, from: since('job', taken ? job.taken : job.created), est: taken?120:0, noEst:'starting now'});
     }
     setHTML($('#p5-prog'), html ? html + '<div style="height:16px"></div>' : ''); tick();
-    setHTML($('#p5-msg'), html ? 'You can keep watching this version while the new one is made.' : ex ? '' : `Export saves it in this video's Exports folder.`);
+    setHTML($('#p5-msg'), html ? 'You can keep watching this version while the new one is made.' : ex ? '' : `Export saves a copy in this video's Exports folder. Your video stays here.`);
     renderTrack(v); renderPick(); syncCaptions(v);
   }
 
   /* --- the one timeline --- */
+  const spotTip = i => `${String(i.say||'').replace(/ at \d+:\d\d$/, '')} · ${mmss(i.at)}`;
   function renderTrack(v){
     const secs = sectionsOf(v), n = secs.length;
-    const html = secs.map((s,i)=>`<button type="button" class="seg" data-sec="${i}" style="flex-grow:${Math.max(.01,s.end-s.start).toFixed(2)}" title="${esc(`${secTitle(s,i,n)} · ${mmss(s.start)} to ${mmss(s.end)}`)}" aria-label="${esc(`Play ${secTitle(s,i,n)}, ${mmss(s.start)} to ${mmss(s.end)}`)}"><i class="fill"></i>${n>1?`<span class="num">${i+1}</span>`:''}</button>`).join('')
-      + spots.map((i,k)=>`<button type="button" class="spot" data-spot="${k}" data-at="${i.at}" title="${esc(i.say)}" aria-label="${esc('Worth a look: '+i.say)}"></button>`).join('')
+    const html = secs.map((s,i)=>`<button type="button" class="tseg" data-sec="${i}" style="flex-grow:${Math.max(.01,s.end-s.start).toFixed(2)}" data-tip="${esc(`${secTitle(s,i,n)} · ${mmss(s.start)} to ${mmss(s.end)}`)}" aria-label="${esc(`Play ${secTitle(s,i,n)}, ${mmss(s.start)} to ${mmss(s.end)}`)}"><i class="fill"></i>${n>1?`<span class="num">${i+1}</span>`:''}</button>`).join('')
+      + spots.map((i,k)=>`<button type="button" class="spot" data-spot="${k}" data-at="${i.at}" data-tip="${esc(spotTip(i))}" aria-label="${esc('Worth a look: '+i.say)}"></button>`).join('')
       + '<i class="knob" id="knob"></i>';
-    setHTML($('#track'), html);
+    setHTML($('#track'), html); $('#spot-key').hidden = !spots.length;
     placeTrack();
   }
   /* a time in the video <-> x on the bar, through the section it falls in (sections have small gaps between them) */
   function xAt(t){
     const secs = sectionsOf(shownV()); let i = secs.findIndex(s=>t < s.end); if(i<0) i = secs.length-1;
-    const el = $(`.seg[data-sec="${i}"]`), s = secs[i]; if(!el || !s) return null;
+    const el = $(`.tseg[data-sec="${i}"]`), s = secs[i]; if(!el || !s) return null;
     return el.offsetLeft + el.offsetWidth * Math.min(1, Math.max(0, (t - s.start)/Math.max(.01, s.end - s.start)));
   }
   function tAt(x){
-    const secs = sectionsOf(shownV()), els = $$('#track .seg'); if(!els.length) return 0;
+    const secs = sectionsOf(shownV()), els = $$('#track .tseg'); if(!els.length) return 0;
     let i = els.findIndex(el=>x <= el.offsetLeft + el.offsetWidth); if(i<0) i = els.length-1;
     const el = els[i], s = secs[i];
     return s.start + (s.end - s.start) * Math.min(1, Math.max(0, (x - el.offsetLeft)/Math.max(1, el.offsetWidth)));
@@ -644,13 +737,14 @@
     if(!hasCut()) return;
     const secs = sectionsOf(shownV()), t = cutPlayer.currentTime || 0, n = secs.length;
     let cur = secs.findIndex(s=>t < s.end); if(cur<0) cur = n-1;
-    $$('#track .seg').forEach((el,i)=>{
+    $$('#track .tseg').forEach((el,i)=>{
       const s = secs[i]; if(!s) return;
       el.querySelector('.fill').style.width = (100*Math.min(1, Math.max(0, (t - s.start)/Math.max(.01, s.end - s.start)))).toFixed(1) + '%';
       el.classList.toggle('on', i===cur); el.classList.toggle('sel', !!picked && picked.kind==='sec' && picked.i===i);
-      const num = el.querySelector('.num'); if(num) num.style.visibility = el.offsetWidth < 14 ? 'hidden' : '';
+      el.classList.toggle('tip-l', i===0); el.classList.toggle('tip-r', i===n-1);
     });
-    $$('#track .spot').forEach((m,k)=>{ const x = xAt(+m.dataset.at); if(x!=null) m.style.left = x + 'px'; m.classList.toggle('sel', !!picked && picked.kind==='spot' && picked.k===k); });
+    const tw = $('#track').offsetWidth;
+    $$('#track .spot').forEach((m,k)=>{ const x = xAt(+m.dataset.at); if(x!=null){ m.style.left = x + 'px'; m.classList.toggle('tip-l', x < 110); m.classList.toggle('tip-r', x > tw - 110); } m.classList.toggle('sel', !!picked && picked.kind==='spot' && picked.k===k); });
     const knob = $('#knob'), x = xAt(t); if(knob && x!=null) knob.style.left = x + 'px';
     const dur = shownV().duration || cutPlayer.duration || 0;
     $('#tm').textContent = `${mmss(t)} / ${mmss(dur)}`;
@@ -672,9 +766,7 @@
   function fillChat(text){ const i=$('#chat-in'); if(!i.value.trim() || i.value===lastFill){ i.value = text; lastFill = text; } i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
   function flashChat(){ const c=$('#chat'); c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); }
   const track = $('#track'); let drag = null, scrubbed = false;
-  track.addEventListener('mouseover', e=>{ const b=e.target.closest('[title]'); if(b){ hoverNow = true; setHTML($('#tl-now'), esc(b.title)); } });
-  track.addEventListener('mouseleave', ()=>{ hoverNow = false; placeTrack(); });
-  /* drag along the bar to scrub; a plain click picks the section or the spot */
+    /* drag along the bar to scrub; a plain click picks the section or the spot */
   track.addEventListener('pointerdown', e=>{ if(e.button || e.target.closest('.spot')) return; drag = {x:e.clientX, id:e.pointerId}; scrubbed = false; });
   track.addEventListener('pointermove', e=>{
     if(!drag || (!scrubbed && Math.abs(e.clientX - drag.x) < 5)) return;
@@ -701,7 +793,7 @@
       html = `<div class="what"><b>${esc(secTitle(s, picked.i, secs.length))}</b><span>${mmss(s.start)} to ${mmss(s.end)}. Say what to change and Claude Code does it.</span></div><button type="button" class="btn navy sm" data-fix-sec="${picked.i}">Fix it</button>`;
     } else picked = null;
     if(html) html += `<button type="button" class="ib" data-pick-x aria-label="Close" title="Close">${icon('i-x')}</button>`;
-    box.hidden = !html; box.classList.toggle('look', !!picked && picked.kind==='spot'); $('#fin-tip').hidden = !!html;
+    box.hidden = !html; box.classList.toggle('spotp', !!picked && picked.kind==='spot'); $('#fin-tip').hidden = !!html;
     setHTML(box, html);
   }
   $('#pick').addEventListener('click', e=>{
@@ -776,11 +868,17 @@
 
   $('#chips').addEventListener('click', e=>{ const b=e.target.closest('button'); if(!b) return; lastFill = $('#chat-in').value; fillChat(b.textContent); });
   $('#vchips').addEventListener('click', e=>{ const b=e.target.closest('[data-v]'); if(b){ viewV=+b.dataset.v; renderFinish(); } });
+  /* export saves a copy and nothing else: same step, same video, same place in it. No Finder window on top of the page. */
+  let exporting = false;
   async function doExport(){
-    try { await api(`/api/project/${pid}/export`, {v: shownV().v}); toast('Saved. Showing it in Finder.'); await refreshProject(); $('#final').focus(); } catch(e){ toast(e.message); }
+    if(exporting) return; exporting = true; renderFinish();
+    try { await api(`/api/project/${pid}/export`, {v: shownV().v, reveal: false}); toast('Saved to Exports.'); await refreshProject(); }
+    catch(e){ toast(e.message); }
+    exporting = false; renderFinish();
   }
-  $('#fin-again').addEventListener('click', doExport);
-  $('#fin-primary').addEventListener('click', ()=>{ const v = shownV(), ex = (PJ.exports||[]).filter(x=>x.v===v.v).pop(); if(ex && !((v.captions_at||0) > ex.at)) newVideo(); else doExport(); });
+  $('#fin-primary').addEventListener('click', doExport);
+  $('#fin-new').addEventListener('click', newVideo);
+  $('#final').addEventListener('click', e=>{ if(e.target.closest('[data-open-exports]')) openFolder('Exports'); });
   $('#tweak').addEventListener('click', ()=>{ flashChat(); $('#chat-in').focus(); });
 
   /* ---------- chat: one thread per video, beside the work, answered by the buyer's own Claude Code ---------- */
@@ -798,6 +896,7 @@
     $('#conn').classList.toggle('off', !on); $('#conn span').textContent = on ? 'Claude Code is connected' : "Claude isn't listening";
     $('#cc-pill').classList.toggle('off', !on); $('#cc-pill span').textContent = on ? 'Claude Code connected' : "Claude isn't listening";
     $('#chat-off').hidden = on || act.some(j=>j.status==='taken');
+    $('#conn').hidden = !$('#chat-off').hidden;   /* the card below already says it */
     const secs = hasCut() ? (shownV().sections || []) : [], n = secs.length;
     $('#chips').hidden = !hasCut();
     if(hasCut()) setHTML($('#chips'), [n>1 ? `The cut at ${mmss(secs[1].start)} is choppy` : 'The start is choppy', `You cut off my last word in section ${Math.min(3, n||1)}`, n>3 ? 'Drop section 4' : 'Make it shorter', 'More pause after each sentence', n>1 ? 'Start with section 2' : 'Make the captions bigger'].map(c=>`<button type="button">${esc(c)}</button>`).join(''));
@@ -836,10 +935,10 @@
   $('#chat-in').addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); $('#chat-form').requestSubmit(); } });
   $('#msgs').addEventListener('click', e=>{
     const w = e.target.closest('[data-watch]');
-    if(w){ viewV = +w.dataset.watch; step(5); $('#cut-player').play().catch(()=>{}); return; }
+    if(w){ viewV = +w.dataset.watch; step(4); $('#cut-player').play().catch(()=>{}); return; }
     if(e.target.closest('[data-chat-no]')){ $('#chat-in').value = pendingAsk.text; pendingAsk=null; renderChat(); $('#chat-in').focus(); return; }
     if(!e.target.closest('[data-chat-go]') || !pendingAsk) return;
-    const a = pendingAsk; pendingAsk = null; sendChat(a); if(S.step!==5) step(5, true);
+    const a = pendingAsk; pendingAsk = null; sendChat(a); if(S.step!==4) step(4, true);
   });
 
   /* ---------- render + poll ---------- */
@@ -858,7 +957,7 @@
       if(wasCap && !PJ.recaption && !PJ.recaption_error) toast('Your captions are updated.');
       if(PJ.versions.length > before) viewV = null;
       renderAll();
-      if(PJ.versions.length > before){ wasCutting=false; dirty=false; step(5, true); toast(`${PJ.versions.length===1?'Your video':'Version '+PJ.versions.length} is ready. Press play.`); }
+      if(PJ.versions.length > before){ wasCutting=false; dirty=false; step(4, true); toast(`${PJ.versions.length===1?'Your video':'Version '+PJ.versions.length} is ready. Press play.`); }
       else if(wasCutting && PJ.stage!=='cutting') wasCutting=false;
       if(!hadStory && hasStory() && S.step===2) toast('Your story is ready to check.');
       if(PJ.stage==='cutting') wasCutting = true;

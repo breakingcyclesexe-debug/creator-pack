@@ -1,112 +1,96 @@
 # Creator Pack Editor (beta)
 
-You film yourself talking. Creator Pack Editor turns those raw takes into a finished video on your own Mac: it hears your words, finds the story in what you said, cuts out the ums, the pauses and the repeats, adds captions and exports a video ready for Instagram or YouTube. Claude Code (the Claude app for your terminal) builds the story with you. Your footage never leaves your Mac.
+**Drop in a raw talking video. It finds your story, puts your hook first and cuts the video around it.**
 
-This is the editing part of Creator Pack. Story Studio (ideas, story options and a script before you film) comes next.
+Talk to the camera in one long take or several. Creator Pack Editor listens to every word, works out the story you were trying to tell and builds the video in the order that tells it best. Free beta. A Claude Code plugin for Mac.
 
-## What you need
+![The finished video with captions, a timeline of its parts and an Export button](docs/img/finish.webp)
 
-- A Mac with an Apple chip (M1 or newer).
-- Claude Pro or Max, signed in to Claude Code. Get Claude Code at claude.com/claude-code.
-- About 4 GB free space for the tools and the speech model, plus room for your videos.
-- Internet for the one time setup (about 10 minutes). After that it works offline.
+## What it does
+
+- **Finds your story.** It reads everything you said and gives the story back to you in one line.
+- **Finds your hook and puts it first.** The line that makes people stay goes at the top, wherever you said it.
+- **Picks your best take.** Said something twice? It uses the better one. One click swaps to the other.
+- **Reorders the parts.** What you said gets put in the order that tells a better story. Drag any part to change it.
+- **Cuts the ums, pauses and retakes.** Every cut lands on a quiet gap, so no word gets clipped.
+- **Keeps your lips in sync.** Checked on every clip before you see the video.
+- **Adds captions of exactly what you said.** Word for word. Cantonese comes out in Traditional characters.
+- **Changes anything by chat.** "Start with the line about quitting." "Drop the bit about the weather." You get a new version and the old ones stay.
+
+Everything runs on your Mac and your footage never leaves it. The cutting uses nothing from your Claude plan. Only finding the story and the chat use Claude.
+
+## How it works
+
+**1. Drop your video.** Everything you filmed, the bad takes too.
+
+![Drop your clips. One 7 minute clip is added.](docs/img/drop.webp)
+
+**2. Check your story.** Your story in one line, plus notes like a stronger opener it found at 01:09.
+
+![Your story in one line, written from what you said, with three notes under it](docs/img/story.webp)
+
+**3. Your hook, then the parts.** Each part shows its take. Move it, swap to your other take or leave it out.
+
+![The parts in order. Part 1 is the hook, take 1 of 2 because you said it twice. Part 2 is the setup.](docs/img/parts.webp)
+
+**4. Get your video.** Captions on, every cut checked. Export it or ask the chat for changes.
 
 ## Install
 
-Pick one. The GitHub way is best: you get updates with one line.
+1. Open Claude Code (in the Claude desktop app, the **Code** tab).
+2. Paste this and press Enter.
 
-### From the beta repo (you got a GitHub invite)
+   ```
+   Install the Creator Pack Editor plugin for me: run claude plugin marketplace add breakingcyclesexe-debug/creator-pack and then claude plugin install creator-pack@creator-pack
+   ```
 
-The repo is private, so first sign your Mac in to GitHub. Accept the invite email from GitHub, then in Terminal:
+3. When it says it's installed, type `/reload-plugins`, then `/creator-pack`. A page opens in your browser. Drop your video.
 
-```
-brew install gh
-gh auth login
-gh auth setup-git
-```
+**First time only.** The page checks your Mac and installs what's missing with one click. About 10 minutes, most of it the speech model download.
 
-(`gh auth login` asks a few questions: pick GitHub.com, HTTPS, and log in with a web browser. `gh auth setup-git` lets Claude Code use that login.)
+**You need** a Mac with an Apple chip (M1 or newer) and Claude Pro or Max.
 
-Then open Claude Code and type these, one at a time:
+**Updates.** Type `/plugin marketplace update creator-pack`, then `/reload-plugins`. Your videos stay put.
 
-```
-/plugin marketplace add breakingcyclesexe-debug/creator-pack
-/plugin install creator-pack@creator-pack
-```
+**If the install line doesn't work,** download the zip from the [Releases page](https://github.com/breakingcyclesexe-debug/creator-pack/releases), unzip it somewhere you'll keep it and start Claude Code with `claude --plugin-dir ~/Documents/creator-pack-<version>`.
 
-The second line opens the plugin's page in `/plugin`; choose install. Then type `/reload-plugins` (or quit and reopen Claude Code) and type `/creator-pack`.
+## Coming in the next update
 
-If the first line says it can't find the repo: check you accepted the GitHub invite, and run `gh auth setup-git` again. If you don't use SSH keys with GitHub and it still fails, start Claude Code with `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1 claude` and try again.
+- Caption looks (Soft, Clean, Glow)
+- Caption placement
+- Pop-in caption motion
 
-### Getting updates
+## Coming after that
 
-When there's a new version you'll hear from us. In Claude Code, type:
+- Motion graphics, punch-in zooms and titles
+- Fine-tune in DaVinci Resolve or Instagram Edits
+- Story Studio, for ideas, story options and a script before you film
 
-```
-/plugin marketplace update creator-pack
-```
+## How long it takes
 
-That fetches the new version. Then `/reload-plugins`. (Same thing from Terminal: `claude plugin update creator-pack@creator-pack`.) Or turn on auto-update once and forget it: type `/plugin`, go to **Marketplaces**, pick **creator-pack** and turn on auto-update. (Auto-update is off by default for beta repos like this one; it works in the background because `gh auth setup-git` stored your login.)
+| Step | Time |
+|---|---|
+| Setup, once | About 10 minutes |
+| Story, after you press Go | About a minute for a few minutes of footage |
+| The cut | About 2 minutes for a short video |
 
-Your videos stay where they are through every update, in `Movies/Creator Pack`.
+## Where your files go
 
-### From the zip (if GitHub doesn't work for you)
-
-Unzip `creator-pack-<version>.zip` somewhere you will keep it, for example your Documents folder. Then in Terminal:
-
-```
-claude --plugin-dir ~/Documents/creator-pack-<version>
-```
-
-Use that same line each time you want the pack (Claude Code only loads it when you start it this way). For an update, we send a new zip: unzip it and use the new folder name in that line.
-
-## Your first video
-
-1. In Claude Code, type `/creator-pack` (or just say "open the creator pack editor").
-2. A page opens in your browser. The first time it shows **Get your Mac ready**: tick what's missing and press **Install**. Homebrew is the one thing you install yourself; the page shows the line to paste into Terminal (it asks for your Mac password).
-3. Press **Open the editor**, drop in your takes (or pick them from your Mac), choose what it's for and press **Go**.
-4. Leave Claude Code open. It builds the story while you wait, then the page cuts the video.
-
-## What to expect
-
-- Setup: about 10 minutes, once. The speech model is a 1.6 GB download, so that part is the slow one.
-- The first time you open the pack, Claude Code spends about 30 seconds setting up its own helpers.
-- Story: about a minute after you press Go, for a few minutes of footage.
-- The cut: about 2 minutes for a short video. Longer footage takes longer.
-- Every video gets checked for missing words, lip sync and clipped sentences before you see it. Anything worth a look is marked on the timeline.
-
-## The chat
-
-Each video has a chat. Ask for changes in plain words: "drop the bit about the weather", "start with the line about quitting", "less tight", "bigger captions". Claude Code makes the change and cuts a new version. Every version is kept, so you can go back.
-
-Not in this version yet: music, titles, animations and your own fonts. Finish those in an editing app (the export works in any of them).
-
-## Exporting
-
-Press **Export** on the finished video. It goes to that video's own folder:
-
-`Movies/Creator Pack/<your video>/Exports`
-
-Next to it, **Footage** holds the clips you dropped in. **Open folder** on the page shows you the folder in Finder.
+Everything is in `Movies/Creator Pack`, one folder per video with **Footage**, **References** and **Exports**. **Open folder** on the page shows it in Finder. Removing the plugin never deletes your videos.
 
 ## When something goes wrong
 
-**The page says "Claude isn't listening".** Claude Code stopped listening, or was closed. Open it again and type `/creator-pack`. Your videos are safe; it picks up where you left off.
+**The page says "Claude isn't listening".** Claude Code was closed. Open it and type `/creator-pack`. It picks up where you left off.
 
-**Setup says something is missing.** Press **Check again** after an install finishes. If one keeps failing, the page shows why under it. Homebrew always needs you to paste one line into Terminal yourself.
+**Setup says something is missing.** Press **Check again** after an install finishes. If one keeps failing, the page shows why under it. Homebrew is the one install you do yourself, by pasting the line the page shows into Terminal.
 
-**"Python 3 is missing".** Install Homebrew (the line is on brew.sh), then run `brew install python` and open the pack again.
-
-**The page won't open.** In Claude Code, ask "open the creator pack page". The page lives at a local address on your Mac only (it starts with `http://127.0.0.1`).
-
-**Where are my files?** Everything is in `Movies/Creator Pack`. Each video has its own folder with Footage, References and Exports. Deleting the pack never deletes these.
-
-## Feedback
-
-This is a beta and your feedback shapes it. Tell us what confused you, what broke and what you wished it did. Reply to the beta invite email or DM us on Instagram. A screen recording or the video's name helps a lot.
+**The page won't open.** In Claude Code, ask "open the creator pack page". It lives on your Mac only, at an address starting `http://127.0.0.1`.
 
 ## Beta limits
 
-- Mac with an Apple chip only. No Windows yet.
-- English works best. Other languages, Cantonese and Mandarin captions are early.
-- Please don't share the pack. Your copy is for you.
+- Mac with an Apple chip only. Windows comes later.
+- English works best. Cantonese and Mandarin captions are early.
+
+## Feedback
+
+Tell us what confused you, what broke and what you wished it did. Open an issue on this repo or DM us on Instagram. A screen recording or the video's name helps a lot.

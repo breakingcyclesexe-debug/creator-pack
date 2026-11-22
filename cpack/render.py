@@ -90,8 +90,14 @@ def shown_words(words, fixes=None, script=None):
     return captions.fix(captions.to_script(words, script, P.han), fixes)
 
 
-def caption_font(words, script=None):
-    return (P.font_cjk(script or 'trad') or P.font()) if captions.has_cjk(words) else P.font()
+def caption_font(words, script=None, look='soft'):
+    """Chinese: the Mac's PingFang (Traditional or Simplified), any look. Otherwise the look's own font: DM Sans
+    (in the pack) for soft and glow, Avenir Next Heavy (on every Mac) for clean."""
+    if captions.has_cjk(words): return P.font_cjk(script or 'trad') or P.font()
+    if look == 'clean':
+        heavy = getattr(P, 'font_heavy', lambda: None)()
+        if heavy: return heavy
+    return captions.DM_SANS if os.path.exists(captions.DM_SANS) else P.font()
 
 
 def words_from_transcript(rep, transcript):
@@ -134,7 +140,8 @@ def recaption(rep, folder, words, fixes=None, script=None):
         d = os.path.join(folder, 'captions.new')
         if os.path.isdir(d):
             import shutil; shutil.rmtree(d)
-        cap_list, _, cap_y = captions.write_track(evs, W, H, cap, caption_font(show, script), d, total)
+        cap_list, _, cap_y = captions.write_track(evs, W, H, cap, caption_font(show, script, captions.look_of(cap)), d, total,
+                                                  fps=rep.get('fps') or 30)
     final(seg, cap_list, cap_y, W, H, fps_r, total, 0, os.path.join(folder, 'video.mp4'), kb=rep.get('kbps'))
     if evs:
         import shutil
@@ -283,7 +290,8 @@ def run(pj, sb, transcript, energy_of, folder, progress=lambda *a: None, hear_sp
     evs = captions.events(show, cap.get('style', 'three'), int(cap.get('per_line', 4)))
     cap_list, cap_y, cap_h = (None, 0, 0)
     if evs:
-        cap_list, cap_h, cap_y = captions.write_track(evs, W, H, cap, caption_font(show, script), os.path.join(folder, 'captions'), total)
+        cap_list, cap_h, cap_y = captions.write_track(evs, W, H, cap, caption_font(show, script, captions.look_of(cap)),
+                                                      os.path.join(folder, 'captions'), total, fps=p['fps'] or 30)
     T['captions'] = round(time.time() - t, 1)
     t = time.time(); progress('final', 0, 'Joining, sound levels, captions')
     out = os.path.join(folder, 'video.mp4')

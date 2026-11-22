@@ -27,6 +27,7 @@ Run `CPACK jobs next --wait 540` in the foreground (never in the background, nev
 ```json
 {"mode": "find", "shape": "turn", "shape_alts": ["tips", "rant"],
  "one_line": "The story in one plain sentence",
+ "short_title": "Quit and drove out of Hong Kong",
  "advice": ["Your strongest hook is at 04:12, try it first"],
  "beats": [{"id": "b1", "label": "Hook", "line": "words exactly as said", "take": "TAKE.MOV", "start": 12.3, "end": 18.9,
             "alts": [{"take": "TAKE.MOV", "line": "the same point said another time", "start": 80.2, "end": 86.0}]}],

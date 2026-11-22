@@ -49,6 +49,18 @@ def font():
     return next((f for f in FONTS if os.path.exists(f)), None)
 
 
+HEAVY = ('/System/Library/Fonts/Avenir Next.ttc', 8)   # Avenir Next Heavy, the "clean" caption look
+
+
+def font_heavy():
+    """(file, face number) of Avenir Next Heavy, or None if this Mac does not have it."""
+    try:
+        from PIL import ImageFont
+        if os.path.exists(HEAVY[0]) and ImageFont.truetype(HEAVY[0], 20, index=HEAVY[1]).getname()[1] == 'Heavy': return HEAVY
+    except Exception: pass
+    return None
+
+
 # Chinese captions: fonts that come with every Mac. (file, name of the Traditional face, name of the Simplified face)
 CJK_FONTS = [('/System/Library/Fonts/PingFang.ttc', 'PingFang TC', 'PingFang SC'),
              ('/System/Library/Fonts/STHeiti Medium.ttc', 'Heiti TC', 'Heiti SC'),

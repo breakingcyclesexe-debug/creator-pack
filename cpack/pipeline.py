@@ -328,7 +328,7 @@ def cut(pid, note=''):
         rec = {'v': v, 'video': f'v{v}/video.mp4', 'duration': rep['duration'], 'size_mb': q['size_mb'],
                'width': rep['width'], 'height': rep['height'], 'clips': len(rep['clips']), 'qa': q, 'note': note,
                'timings': rep['timings'], 'seconds': round(time.time() - t0, 1), 'at': time.time(),
-               'story_v': sb.get('version'), 'takes': len(story_takes(sb)), 'fixes': dict(rep.get('caption_fixes') or {})}
+               'story_v': sb.get('version'), 'takes': len(story_takes(sb)), 'kept_repeats': len(rep.get('kept_repeats') or []), 'fixes': dict(rep.get('caption_fixes') or {})}
 
         def fin(pj):
             pj['versions'].append(rec); pj.update(stage='review', progress=None)

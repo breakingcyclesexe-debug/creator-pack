@@ -13,6 +13,7 @@ from .platform import get as platform
 
 P = platform()
 UI = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ui')
+FONTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'fonts')
 VIDEO_EXT = {'.mov', '.mp4', '.m4v', '.mkv', '.avi', '.mts', '.webm'}
 MAX_JSON = 1 << 20
 WAITLIST_URL = os.environ.get('CPACK_WAITLIST_URL', 'https://breakingcycles.life')   # Story Studio "I want this": point at the real page later
@@ -55,6 +56,7 @@ def project_view(pid):
         if isinstance(v.get('qa'), dict) and 'items' in v['qa']: v['qa'] = dict(v['qa'], items=qa.surface(v['qa']['items']))
         v['captions_stale'] = pipeline.stale_captions(pj, v)
     pj['fixes'] = pj.pop('caption_fixes', None) or {}
+    pj['title'] = prj.title_of(pj, pj['storyboard'])
     pj['chat'] = prj.chat(pid)
     pj['jobs'] = [{k: j.get(k) for k in ('id', 'type', 'status', 'text', 'reply', 'created', 'taken')} for j in jobs.listing(prj.jobs_dir(), pid)][-20:]
     pj['folder_name'] = os.path.basename(pj['folder']) if pj.get('folder') else ''
@@ -98,7 +100,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Type', ctype); self.send_header('Content-Length', str(len(body)))
         self.send_header('Cache-Control', 'no-store'); self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('Content-Security-Policy', "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-                         "font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:")
+                         "font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:")
         for k, v in (extra or {}).items(): self.send_header(k, v)
         self.end_headers()
         if self.command != 'HEAD': self.wfile.write(body)
@@ -153,6 +155,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == '/favicon.ico': return self._send(204)
             if path in ('/', '/index.html'): return self._file(os.path.join(UI, 'index.html'), 'text/html; charset=utf-8')
+            if path.startswith('/fonts/'):   # the caption fonts in the pack, for the Look preview
+                f = os.path.join(FONTS, path[7:])
+                return self._file(f, 'font/ttf') if inside(FONTS, f) and f.endswith('.ttf') else self._err(404, 'not found')
             if path.startswith('/ui/'):
                 f = os.path.join(UI, path[4:])
                 return self._file(f) if inside(UI, f) else self._err(404, 'not found')
@@ -221,6 +226,8 @@ class Handler(BaseHTTPRequestHandler):
                 pipeline.use_story_version(pid, int(body.get('n', 0))); return self._json({'ok': True})
             if act == 'dismiss_back':
                 prj.update(pid, lambda pj: pj.update(offer_back=None)); return self._json({'ok': True})
+            if act == 'rename':
+                prj.rename(pid, body.get('title')); return self._json({'projects': prj.listing()})
             if act == 'settings':
                 pj = prj.update(pid, lambda pj: pj.update(settings=prj.merge_settings(pj['settings'], body)))
                 return self._json(pj['settings'])

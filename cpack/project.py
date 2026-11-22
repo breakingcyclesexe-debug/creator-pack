@@ -17,14 +17,15 @@ DEFAULT_SETTINGS = {
     'purpose': 'ig', 'format': '9:16', 'fit': 'pad', 'mode': 'find', 'script': '', 'language': 'auto',
     'length': 'auto',
     'cut': {'breath': 'normal', 'fillers': True, 'pauses': True, 'repeats': True, 'best_take': True, 'max_pause': 0.7},
-    'captions': {'style': 'three', 'size': 'm', 'position': 'bottom', 'color': '#ffffff', 'pop': '#e8a13d', 'pop_on': True,
-                 'per_line': 4, 'upper': True},
+    'captions': {'style': 'three', 'look': 'soft', 'size': 'm', 'position': 'bottom', 'motion': True, 'color': '#ffffff',
+                 'pop': '#e3991d', 'pop_on': False, 'per_line': 4, 'upper': True},   # color, upper: kept for old projects, the look decides
     'export': {'max_mb': 0},
 }
 CHOICES = {'purpose': {'ig', 'yt', 'other'}, 'format': {'9:16', '16:9', '4:5', '1:1', 'source'}, 'fit': {'crop', 'pad'},
            'mode': {'find', 'keep', 'script'}, 'length': {'auto', 'short', 'mid', 'long'},
            'cut.breath': {'tight', 'normal', 'relaxed'}, 'captions.style': {'word', 'three', 'lines', 'none'},
-           'captions.size': {'s', 'm', 'l'}, 'captions.position': {'top', 'middle', 'bottom'}}
+           'captions.size': {'s', 'm', 'l'}, 'captions.position': {'top', 'middle', 'bottom', 'left', 'right', 'moves'},
+           'captions.look': {'soft', 'clean', 'glow'}}
 HEX = re.compile(r'^#[0-9a-fA-F]{6}$')
 
 
@@ -203,6 +204,37 @@ def update(pid, fn):
         pj = load(pid); fn(pj); save(pj); return pj
 
 
+TITLE_STOP = {'a', 'an', 'the', 'and', 'or', 'but', 'so', 'to', 'of', 'in', 'on', 'at', 'with', 'for', 'from', 'my', 'your', 'is',
+              'are', 'was', 'i', "i'm", 'you', "you're", 'that', 'then', 'by', 'as', 'no', 'two', 'still'}
+
+
+def short_title(text, words=6, chars=40):
+    """A video's name for the "Your videos" list: the first few words of its one-line story, cut at a word (never
+    mid-word), without a dangling "and" or "with" at the end."""
+    out = []
+    for w in ' '.join(str(text or '').split()).split(' '):
+        if not w or len(out) >= words or len(' '.join(out + [w])) > chars: break
+        out.append(w)
+        if w[-1:] in ',.;:!?': break
+    while len(out) > 1 and out[-1].strip(',.;:!?').lower() in TITLE_STOP: out.pop()
+    t = ' '.join(out).strip(' ,.;:!?')
+    return t[:1].upper() + t[1:]
+
+
+def title_of(pj, sb=None):
+    """What a video is called in the list: the buyer's own name for it, else the story's short title, else the
+    first words of the one-line story, else the first clip's name."""
+    sb = sb or {}
+    return (pj.get('title') or short_title(sb.get('short_title') or '', 7, 48) or short_title(sb.get('one_line') or '')
+            or (pj.get('name') if pj.get('takes') else '') or 'New video')
+
+
+def rename(pid, title):
+    """The buyer's own name for a video (empty = back to the story's short title)."""
+    t = ' '.join(re.sub(r'[\x00-\x1f\x7f]', ' ', str(title or '')).split())[:60]
+    return update(pid, lambda pj: pj.update(title=t))
+
+
 def listing():
     os.makedirs(projects_dir(), exist_ok=True)
     out = []
@@ -212,7 +244,7 @@ def listing():
             if pj:
                 sb = read_json(os.path.join(projects_dir(), pid, 'storyboard.json'), {}) or {}
                 out.append({'id': pid, 'name': pj.get('name'), 'stage': pj.get('stage'), 'created': pj.get('created'),
-                            'story': str(sb.get('one_line', ''))[:70]})
+                            'title': title_of(pj, sb), 'story': str(sb.get('one_line', ''))[:240], 'empty': not pj.get('takes')})
     return out
 
 
